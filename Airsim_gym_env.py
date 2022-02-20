@@ -41,11 +41,11 @@ def convert_lidar_data_to_polar(lidar_data):
     
     R=np.sqrt(X**2+Y**2)
     T=np.arctan2(Y,X)
-
+    
     # TODO
     # Could somebody add the 3rd dimension ?
     
-    return T,R
+    return np.column_stack((T,R))
 
 
 class CustomEnv(gym.Env):
@@ -87,26 +87,34 @@ class CustomEnv(gym.Env):
         
         self.is_rendered=is_rendered
         self.dn = dn
+        self.lidar_size=lidar_size
+        
+        self.total_reward=0
+        self.done=False
             
         
         
         
 ########## Below are MDP related objects #############
         
-        self.action_space = spaces.Dict(spaces={
-            'throttle': spaces.Box(low=-1, high=1, shape=(1, 1)),
-            'steering': spaces.Box(low=-0.5, high=0.5, shape=(1, 1)),
-            'brake'   : spaces.Box(low=0, high=1, shape=(1, 1))
-            })
+        self.action_space = spaces.Box(low   = np.array([-1, -0.5, 0], dtype=np.float32),
+                                       high  = np.array([ 1,  0.5, 1], dtype=np.float32),
+                                       dtype=np.float32
+                                       )
+        
+        # In this order
+        # "throttle"
+        # "steering"
+        # "brake"
         
 		 #Example for using image as input (channel-first; channel-last also works):
         self.observation_space = spaces.Dict(spaces={
-            "current_lidar" : spaces.Box(low=0, high=np.inf, shape=(lidar_size, 2)),# the format is [angle , radius]
-            "prev_lidar"   : spaces.Box(low=0, high=np.inf, shape=(lidar_size, 2)), #using the last observation could improve performances
+            "current_lidar" : spaces.Box(low=0, high=np.inf, shape=(lidar_size,)),# the format is [angle , radius]
+            "prev_lidar" : spaces.Box(low=0, high=np.inf, shape=(lidar_size,)),
             
-            "prev_throttle": spaces.Box(low=-1, high=1, shape=(1, 1)),
-            "prev_steering": spaces.Box(low=-0.5, high=+0.5, shape=(1,1)),
-            "prev_brake"   : spaces.Box(low=0, high=1, shape=(1,1))
+            "prev_throttle": spaces.Box(low=-1  , high=1   , shape=(1,)),
+            "prev_steering": spaces.Box(low=-0.5, high=+0.5, shape=(1,)),
+            "prev_brake"   : spaces.Box(low=0   , high=1   , shape=(1,))
             })
         
   
@@ -126,14 +134,14 @@ class CustomEnv(gym.Env):
 ############ The actions are extracted from the "action" parameter
 
     # TODO Let's verify "action" has the correct format. There might already be a problem with negative steerings, as we would need to change gear manually
-        self.car_controls.throttle = action['throttle']
-        self.car_controls.steering = action['steering']
-        self.car_controls.brake = action['brake']
+        
+        # for a reason, airsim doesnt work with np.float32, so let's change them to float
+        self.car_controls.throttle = float(action[0])
+        self.car_controls.steering = float(action[1])
+        self.car_controls.brake    = float(action[2])
 
-        self.prev_action.append(action)
-
-
-        client.setCarControls(self.car_controls)
+        A = self.car_controls
+        self.client.setCarControls(A)
         
         
     # Now that everything is good and proper, let's run AirSim a bit
@@ -148,21 +156,30 @@ class CustomEnv(gym.Env):
 
     # Get the state from AirSim
         self.car_state = client.getCarState()
-
+        
+        self.prev_throttle = np.array([action[0]])
+        self.prev_steering = np.array([action[1]])
+        self.prev_brake    = np.array([action[2]])
 
 
     # TODO
 ############ extracts the observation ################
-        T, R = convert_lidar_data_to_polar(self.client.getLidarData())
+        self.current_lidar = convert_lidar_data_to_polar(self.client.getLidarData())
 
-        self.current_lidar = [T, R]
         self.prev_lidar = self.current_lidar
 
-        observation = [self.current_lidar[0],
-                       self.current_lidar[1]] + self.prev_action
+        observation = {
+            "current_lidar" : self.current_lidar[:self.lidar_size,1],
+            "prev_lidar"   : self.prev_lidar[:self.lidar_size,1],
+            "prev_throttle" : self.prev_throttle,
+            "prev_steering" : self.prev_steering,
+            "prev_brake"    : self.prev_brake
+            }
 
     # TODO
 ############# Updates the reward ###############
+        reward =0; #placeholder        
+
 
         self.total_reward = self.total_reward + reward
 
@@ -171,9 +188,11 @@ class CustomEnv(gym.Env):
     # TODO
     # Tests the break condition in case of crutial mistake, and applies a heavy
     # penalty
+        
     
+        break_condition=False #placeholder
         if break_condition:
-            done = True
+            self.done = True
 
         
     
@@ -184,6 +203,7 @@ class CustomEnv(gym.Env):
     # TODO
     # What cool tricks could we do with this one ?
         info = {}
+        done=self.done
 
         return observation, reward, done, info
 
@@ -210,25 +230,32 @@ class CustomEnv(gym.Env):
         self.brake = 0
 
         self.done = False
+        
+        self.total_reward=0
 
         # depending on the client reset time, the lidar may not be
-        time.sleep(1)
         # available. let's sleep a bit.
-        T, R = convert_lidar_data_to_polar(self.client.getLidarData())
-
-        self.current_lidar = [T, R]
-
-        self.prev_throttle = 0
-        self.prev_steering = 0
-        self.prev_brake = 0
-
-        self.prev_action = [self.prev_throttle,
-                            self.prev_steering, self.prev_brake]
-
-        observation = [self.current_lidar[0],
-                       self.current_lidar[1]] + self.prev_action
+        time.sleep(1)
         
-        self.client.simContinueForFrames( self.dn ) # Starts the simulation
+        self.current_lidar = convert_lidar_data_to_polar(self.client.getLidarData())
+        self.prev_lidar = convert_lidar_data_to_polar(self.client.getLidarData())
+        
+
+        self.prev_throttle = np.array([0])
+        self.prev_steering = np.array([0])
+        self.prev_brake = np.array([0])
+
+
+
+        observation = {
+            "current_lidar" : self.current_lidar[:self.lidar_size,1],
+            "prev_lidar"    : self.prev_lidar[:self.lidar_size,1],
+            "prev_throttle" : self.prev_throttle,
+            "prev_steering" : self.prev_steering,
+            "prev_brake"    : self.prev_brake
+            }
+        
+        #self.client.simContinueForFrames( self.dn ) # Starts the simulation
 
         return observation  # reward, done, info can't be included
 
@@ -276,14 +303,21 @@ class CustomEnv(gym.Env):
 # connect to the AirSim simulator
 client = airsim.CarClient()
 client.confirmConnection()
-client.simPause(True)
+client.simPause(False)
 client.enableApiControl(True)
 
+airsim_env=CustomEnv(client, dn=400 ,lidar_size=10)
+
+for _ in range(100):
+    action=np.random.rand(3)
+    action[2]=0
+    airsim_env.step(action)
 
 
-airsim_env=CustomEnv(client, dn=50 ,lidar_size=10)
+
 airsim_env.reset()
 client.enableApiControl(False)
 
-
 airsim_env.close()
+
+check_env(airsim_env)
