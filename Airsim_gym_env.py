@@ -11,9 +11,13 @@ from stable_baselines3.common.env_checker import check_env
 import time
 import matplotlib.pyplot as plt
 
+import random
+
 
 import gym
 from gym import spaces
+
+from stable_baselines3 import SAC
 
 def convert_lidar_data_to_polar(lidar_data):
     """
@@ -91,26 +95,25 @@ class CustomEnv(gym.Env):
         
         self.total_reward=0
         self.done=False
-            
+        self.step_iterations=0
         
         
         
 ########## Below are MDP related objects #############
         
-        self.action_space = spaces.Box(low   = np.array([-1, -1, 0], dtype=np.float32),
-                                       high  = np.array([ 1,  1, 1], dtype=np.float32),
+        self.action_space = spaces.Box(low   = np.array([-1, -0.5], dtype=np.float32),
+                                       high  = np.array([ 1,  0.5], dtype=np.float32),
                                        dtype=np.float32
                                        )
         
         # In this order
         # "throttle"
         # "steering"
-        # "brake"
         
 		 #Example for using image as input (channel-first; channel-last also works):
              
-        low=np.zeros((lidar_size,2))
-        high=np.zeros((lidar_size,2))
+        low =np.zeros((lidar_size,2), dtype=np.float32)
+        high=np.zeros((lidar_size,2), dtype=np.float32)
         
         low[:,0]=-np.pi
         low[:,1]=0
@@ -123,8 +126,7 @@ class CustomEnv(gym.Env):
             "prev_lidar"    : spaces.Box(low=low, high=high, shape=(lidar_size,2), dtype=np.float32),
             
             "prev_throttle": spaces.Box(low=-1  , high=1   , shape=(1,)),
-            "prev_steering": spaces.Box(low=-0.5, high=+0.5, shape=(1,)),
-            "prev_brake"   : spaces.Box(low=0   , high=1   , shape=(1,))
+            "prev_steering": spaces.Box(low=-0.5, high=+0.5, shape=(1,))
             })
         
   
@@ -143,25 +145,25 @@ class CustomEnv(gym.Env):
 
 ############ The actions are extracted from the "action" parameter
 
-    # TODO Let's verify "action" has the correct format. There might already be a problem with negative steerings, as we would need to change gear manually
+    # TODO Let's verify "action" has the correct format. There might already be a problem with negative sthrottle, as we would need to change gear manually
         
-        # for a reason, airsim doesnt work with np.float32, so let's change them to float
+
         self.car_controls.throttle = float(action[0])
         self.car_controls.steering = float(action[1])
-        self.car_controls.brake    = float(action[2])
 
         A = self.car_controls
         self.client.setCarControls(A)
         
         
-    # Now that everything is good and proper, let's run AirSim a bit
+    # Now that everything is good and proper, let's run a few frames of AirSim
         self.client.simContinueForFrames( self.dn )        
-        
+        t1=time.time()
         
         
     # Waiting the simulation step to be over
         while not self.client.simIsPause():
             pass
+
         
 
     # Get the state from AirSim
@@ -169,41 +171,70 @@ class CustomEnv(gym.Env):
         
         self.prev_throttle = np.array([action[0]])
         self.prev_steering = np.array([action[1]])
-        self.prev_brake    = np.array([action[2]])
 
 
-    # TODO
+    # TODO The number of lidar points received can vary. When it is
+    # receiving less than lidar.size, the program crashes. It has to be fixed
 ############ extracts the observation ################
         self.current_lidar = convert_lidar_data_to_polar(self.client.getLidarData())
-        print(self.current_lidar.shape)
         self.prev_lidar = self.current_lidar
+        
+        current_lidar=self.current_lidar
+        n_points_received = current_lidar.shape[0]
+        if n_points_received < self.lidar_size : #not enough points !
+            print( 'reshaping lidar ! ')
+            adapted_lidar = np.concatenate() #lets copy the first value multiple time
+            adapted_lidar[0:n_points_received] = self.current_lidar
+            
 
         observation = {
-            "current_lidar" : self.current_lidar[:self.lidar_size,0:2],
-            "prev_lidar"   : self.prev_lidar[:self.lidar_size,0:2],
+            "current_lidar" : self.current_lidar[:self.lidar_size,0:50],
+            "prev_lidar"   : self.prev_lidar[:self.lidar_size,0:50],
             "prev_throttle" : self.prev_throttle,
-            "prev_steering" : self.prev_steering,
-            "prev_brake"    : self.prev_brake
+            "prev_steering" : self.prev_steering
             }
 
     # TODO
 ############# Updates the reward ###############
-        reward =0; #placeholder        
+        # collision info is necessary to compute reward
+        collision_info = client.simGetCollisionInfo()
+        crash = collision_info.has_collided
+        
+        
+        if crash:
+            reward =-100
+            
+            
+        elif self.car_state.speed <=1: # Lets force the car to move
+            reward = -0.1
+            
+        else:
+            reward = 0.1*self.car_state.speed #the faster the better
 
 
+        
         self.total_reward = self.total_reward + reward
 
 
 
     # TODO
-    # Tests the break condition in case of crutial mistake, and applies a heavy
-    # penalty
+    # Tests the break condition in case of crucial mistake, and applies a heavy
+    # penalty or not
         
     
         break_condition=False #placeholder
+        position = self.car_state.kinematics_estimated.position
+        if position.x_val**2+position.y_val**2 >= 20000:
+            print('breaking out')
+            break_condition=True
+        
+
+        
         if break_condition:
             self.done = True
-
+        
+        if crash:
+            self.done=True
         
     
     # displays ( or not ) the lidar observation
@@ -235,9 +266,28 @@ class CustomEnv(gym.Env):
 # to avoid overfitting, there must be a random positioning of the vehicule
 # in the future
 
+
+        x_val=random.uniform(-30, 30)
+        y_val=random.uniform(-30, 30)
+        
+        theta=random.uniform(0, 360)
+        psi=random.uniform(0, 360)
+        
+        
+        pose = airsim.Pose()
+        
+        orientation= airsim.Quaternionr (1,0,theta, psi)
+        position = airsim.Vector3r ( x_val, y_val,-1)
+        pose.position=position
+        pose.orientation=orientation
+
+            
+        self.client.simSetVehiclePose(pose, ignore_collision=True)
+        
+    ##########
+
         self.throttle = 0
         self.steering = 0
-        self.brake = 0
 
         self.done = False
         
@@ -247,11 +297,10 @@ class CustomEnv(gym.Env):
         
         self.current_lidar = convert_lidar_data_to_polar(self.client.getLidarData())
         self.prev_lidar = convert_lidar_data_to_polar(self.client.getLidarData())
-        print("step : "+str(self.current_lidar.shape))
+        print("reset : "+str(self.current_lidar.shape))
 
         self.prev_throttle = np.array([0])
         self.prev_steering = np.array([0])
-        self.prev_brake = np.array([0])
         
 
 
@@ -259,10 +308,8 @@ class CustomEnv(gym.Env):
             "current_lidar" : self.current_lidar[:self.lidar_size,0:2],
             "prev_lidar"    : self.prev_lidar[:self.lidar_size, 0:2],
             "prev_throttle" : self.prev_throttle,
-            "prev_steering" : self.prev_steering,
-            "prev_brake"    : self.prev_brake
+            "prev_steering" : self.prev_steering
             }
-        
 
         return observation  # reward, done, info can't be included
 
@@ -314,17 +361,44 @@ client.confirmConnection()
 client.simPause(True)
 client.enableApiControl(True)
 
-airsim_env=CustomEnv(client, dn=10 ,lidar_size=10)
-check_env(airsim_env)
+airsim_env=CustomEnv(client, dn=10 ,lidar_size=1000)
+
+
+
+models_dir = "C:/Users/jamyl/Desktop/TER_dossier/Training"
+logdir = "C:/Users/jamyl/Desktop/TER_dossier/Training"
+
+TIMESTEPS=100
+model = SAC("MultiInputPolicy", airsim_env, verbose=1,tensorboard_log=logdir)
+iters=0
+while(True):
+    iters=iters+1
+    model.learn(total_timesteps=TIMESTEPS, reset_num_timesteps=False, tb_log_name=f"SAC")
+    model.save(f"{models_dir}/{TIMESTEPS*iters}")
+    
+    
 
 #%%
+obs = airsim_env.reset()
+while True:
+    action, _states = model.predict(obs, deterministic=True)
+    obs, reward, done, info = airsim_env.step(action)
+    airsim_env.render()
+    if done:
+      obs = airsim_env.reset()
+
+#%%
+
 airsim_env.reset()
 airsim_env.render()
 
-for _ in range(500):
+for _ in range(100):
     action=np.random.rand(3)
-    action[1]=(action[1]-0.5)*2
-    action[2]=0
+    action[1]=(action[1]-0.5) #normalisation le steering doit être entre -0.5 et 0.5
+    action[2]=0 #pas de freinage
+    
+    if _<10:
+        action[1]=0.5
     airsim_env.step(action)
 
 
@@ -334,3 +408,4 @@ airsim_env.close()
 
 #%%
 
+check_env(airsim_env)
