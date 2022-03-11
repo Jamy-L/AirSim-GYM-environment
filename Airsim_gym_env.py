@@ -356,7 +356,6 @@ class CustomEnv(gym.Env):
         
         # reshape array to 4 channel image array H X W X 4
         img_rgb = img1d.reshape(response.height, response.width, 3)
-        #upscale=cv2.resize(img_rgb, (600, 600))
         
         cv2.imshow("image", img_rgb)
         
@@ -374,7 +373,6 @@ class CustomEnv(gym.Env):
 
 ###############################################################################
 
-
 # connect to the AirSim simulator
 client = airsim.CarClient()
 client.confirmConnection()
@@ -384,7 +382,7 @@ client.enableApiControl(True)
 airsim_env=CustomEnv(client, dn=10 ,lidar_size=500)
 # Testing the model after learning
 
-model = SAC.load("C:/Users/jamyl/Desktop/TER_dossier/Training/32800",tensorboard_log="C:/Users/jamyl/Desktop/TER_dossier/Training")
+model = SAC.load("C:/Users/jamyl/Documents/GitHub/AirSim-GYM-environment/Training/32800",tensorboard_log="C:/Users/jamyl/Documents/GitHub/AirSim-GYM-environment/Training")
 obs = airsim_env.reset()
 while True:
     action, _states = model.predict(obs, deterministic=True)
@@ -394,7 +392,7 @@ while True:
       obs = airsim_env.reset()
 
 #%% Load a previously trained model
-model = SAC.load("C:/Users/jamyl/Desktop/TER_dossier/Training/32800",tensorboard_log="C:/Users/jamyl/Desktop/TER_dossier/Training")
+model = SAC.load("C:/Users/jamyl/Documents/GitHub/AirSim-GYM-environment/Training/32800",tensorboard_log="C:/Users/jamyl/Documents/GitHub/AirSim-GYM-environment/Training")
 
 
 model.set_env(airsim_env)
