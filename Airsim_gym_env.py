@@ -10,7 +10,7 @@ import airsim
 from stable_baselines3.common.env_checker import check_env
 import time
 import matplotlib.pyplot as plt
-
+import cv2
 import random
 
 
@@ -36,7 +36,7 @@ def convert_lidar_data_to_polar(lidar_data):
 
     Returns
     -------
-    converted_lidar_data=np.array([theta1, ..., thetan]) , np.array([r1, ..., rn]).
+    converted_lidar_data=np.array([theta_1, ..., theta_n]) , np.array([r_1, ..., r_n]).
 
     """
     list=lidar_data.point_cloud
@@ -139,13 +139,11 @@ class CustomEnv(gym.Env):
         
         
     def step(self, action):
-    
-    
+        info={} #Just a debugging feature here
+        
+############ The actions are extracted from the "action" argument
 
-
-############ The actions are extracted from the "action" parameter
-
-    # TODO Let's verify "action" has the correct format. There might already be a problem with negative sthrottle, as we would need to change gear manually
+    #TODO There might already be a problem with negative throttle, as we would need to change gear manually
         
 
         self.car_controls.throttle = float(action[0])
@@ -157,7 +155,6 @@ class CustomEnv(gym.Env):
         
     # Now that everything is good and proper, let's run a few frames of AirSim
         self.client.simContinueForFrames( self.dn )        
-        t1=time.time()
         
         
     # Waiting the simulation step to be over
@@ -173,27 +170,33 @@ class CustomEnv(gym.Env):
         self.prev_steering = np.array([action[1]])
 
 
-    # TODO The number of lidar points received can vary. When it is
-    # receiving less than lidar.size, the program crashes. It has to be fixed
+
+    
 ############ extracts the observation ################
         self.current_lidar = convert_lidar_data_to_polar(self.client.getLidarData())
-        self.prev_lidar = self.current_lidar
-        
+
+        # TODO : is copy padding really the best thing to do ? 
+        ### Data padding if lidar is too short on this step
         current_lidar=self.current_lidar
         n_points_received = current_lidar.shape[0]
         if n_points_received < self.lidar_size : #not enough points !
-            print( 'reshaping lidar ! ')
-            adapted_lidar = np.concatenate() #lets copy the first value multiple time
-            adapted_lidar[0:n_points_received] = self.current_lidar
-            
-
+            temp = np.ones((self.lidar_size-n_points_received+1 , 2))*current_lidar[0] #lets copy the first value multiple time
+            adapted_lidar = np.concatenate((self.current_lidar,temp)) 
+            self.current_lidar = adapted_lidar
+            info["Reshaped lidar"]=True
+        else:
+            info["Reshaped lidar"]=False # lets inform that it happened for latter debugging
+        #############################################
+        
+        
         observation = {
-            "current_lidar" : self.current_lidar[:self.lidar_size,0:50],
-            "prev_lidar"   : self.prev_lidar[:self.lidar_size,0:50],
+            "current_lidar" : self.current_lidar[:self.lidar_size,0:2], # if we have too many points the last ones are removed
+            "prev_lidar"   : self.prev_lidar[:self.lidar_size,0:2],
             "prev_throttle" : self.prev_throttle,
             "prev_steering" : self.prev_steering
             }
 
+        self.prev_lidar = self.current_lidar
     # TODO
 ############# Updates the reward ###############
         # collision info is necessary to compute reward
@@ -232,21 +235,20 @@ class CustomEnv(gym.Env):
         
         if break_condition:
             self.done = True
+            print("Episode reward : " + str(self.total_reward) + 2*'\n')
         
         if crash:
             self.done=True
+            print("Crash occured")
+            print("Episode reward : " + str(self.total_reward) + 2*'\n')
         
     
     # displays ( or not ) the lidar observation
         if self.is_rendered:
             self.render()
 
-    # TODO
-    # What cool tricks could we do with this one ?
-        info = {}
-        done=self.done
 
-        return observation, reward, done, info
+        return observation, reward, self.done, info
 
 
 
@@ -292,12 +294,24 @@ class CustomEnv(gym.Env):
         self.done = False
         
         self.total_reward=0
-        self.client.simContinueForFrames( 100 ) #let's skip the first frames to inialise lidar and make sure everything id right
+        self.client.simContinueForFrames( 100 ) #let's skip the first frames to inialise lidar and make sure everything is right
         time.sleep(1)  #the lidar data can take a bit of time before initialisation.
         
         self.current_lidar = convert_lidar_data_to_polar(self.client.getLidarData())
         self.prev_lidar = convert_lidar_data_to_polar(self.client.getLidarData())
-        print("reset : "+str(self.current_lidar.shape))
+        
+        ### Data padding if lidar is too short on this step
+        current_lidar=self.current_lidar
+        n_points_received = current_lidar.shape[0]
+        if n_points_received < self.lidar_size : #not enough points !
+            temp = np.ones((self.lidar_size-n_points_received+1 , 2))*current_lidar[0] #lets copy the first value multiple time
+            adapted_lidar = np.concatenate((self.current_lidar,temp)) 
+            self.current_lidar = adapted_lidar
+            self.prev_lidar = adapted_lidar
+        ##############################################
+        
+        
+        print("reset")
 
         self.prev_throttle = np.array([0])
         self.prev_steering = np.array([0])
@@ -305,7 +319,7 @@ class CustomEnv(gym.Env):
 
 
         observation = {
-            "current_lidar" : self.current_lidar[:self.lidar_size,0:2],
+            "current_lidar" : self.current_lidar[:self.lidar_size,0:2], # if we have too many points the last ones are removed
             "prev_lidar"    : self.prev_lidar[:self.lidar_size, 0:2],
             "prev_throttle" : self.prev_throttle,
             "prev_steering" : self.prev_steering
@@ -332,18 +346,24 @@ class CustomEnv(gym.Env):
         plt.pause(0.01)
         plt.draw()
         
+        ########### Image ###############
+        responses = client.simGetImages([
+        airsim.ImageRequest("Camera1", airsim.ImageType.Scene, False, False)], "MyVehicle")  #scene vision image in uncompressed RGB array
+        response = responses[0]
+    
+        # get numpy array
+        img1d = np.frombuffer(response.image_data_uint8, dtype=np.uint8) 
         
- 
+        # reshape array to 4 channel image array H X W X 4
+        img_rgb = img1d.reshape(response.height, response.width, 3)
+        #upscale=cv2.resize(img_rgb, (600, 600))
+        
+        cv2.imshow("image", img_rgb)
+        
         
 
     def close (self):
          client.enableApiControl(False)
-
-
-
-
-
-
 
 
 
@@ -361,24 +381,10 @@ client.confirmConnection()
 client.simPause(True)
 client.enableApiControl(True)
 
-airsim_env=CustomEnv(client, dn=10 ,lidar_size=1000)
+airsim_env=CustomEnv(client, dn=10 ,lidar_size=500)
+# Testing the model after learning
 
-
-
-models_dir = "C:/Users/jamyl/Desktop/TER_dossier/Training"
-logdir = "C:/Users/jamyl/Desktop/TER_dossier/Training"
-
-TIMESTEPS=100
-model = SAC("MultiInputPolicy", airsim_env, verbose=1,tensorboard_log=logdir)
-iters=0
-while(True):
-    iters=iters+1
-    model.learn(total_timesteps=TIMESTEPS, reset_num_timesteps=False, tb_log_name=f"SAC")
-    model.save(f"{models_dir}/{TIMESTEPS*iters}")
-    
-    
-
-#%%
+model = SAC.load("C:/Users/jamyl/Desktop/TER_dossier/Training/32800",tensorboard_log="C:/Users/jamyl/Desktop/TER_dossier/Training")
 obs = airsim_env.reset()
 while True:
     action, _states = model.predict(obs, deterministic=True)
@@ -387,12 +393,31 @@ while True:
     if done:
       obs = airsim_env.reset()
 
-#%%
+#%% Load a previously trained model
+model = SAC.load("C:/Users/jamyl/Desktop/TER_dossier/Training/32800",tensorboard_log="C:/Users/jamyl/Desktop/TER_dossier/Training")
+
+
+model.set_env(airsim_env)
+airsim_env.reset()
+airsim_env.render()
+
+while(True):
+    model.learn(total_timesteps=1000, reset_num_timesteps=False, tb_log_name="SAC_1")
+
+
+
+
+#%% Making random control
 
 airsim_env.reset()
 airsim_env.render()
 
-for _ in range(100):
+for _ in range(10000):
+
+
+
+    
+    
     action=np.random.rand(3)
     action[1]=(action[1]-0.5) #normalisation le steering doit être entre -0.5 et 0.5
     action[2]=0 #pas de freinage
@@ -403,9 +428,34 @@ for _ in range(100):
 
 
 
+
+
+
+
+
 airsim_env.reset()
 airsim_env.close()
 
-#%%
+
+
+
+
+#%% Trainign a model
+models_dir = "C:/Users/jamyl/Desktop/TER_dossier/Training"
+logdir = "C:/Users/jamyl/Desktop/TER_dossier/Training"
+
+TIMESTEPS=100
+model = SAC("MultiInputPolicy", airsim_env, verbose=1,tensorboard_log=logdir)
+iters=0
+while(True):
+    iters=iters+1
+    model.learn(total_timesteps=TIMESTEPS, reset_num_timesteps=False, tb_log_name="SAC")
+    model.save(f"{models_dir}/{TIMESTEPS*iters}")
+    
+    
+
+
+
+#%% checking SB3 compatibility
 
 check_env(airsim_env)
