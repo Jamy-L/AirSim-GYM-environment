@@ -269,20 +269,20 @@ class CustomEnv(gym.Env):
 # in the future
 
 
+        # be careful, the call arguments for quaterninons are x,y,z,w 
+
+
         x_val=random.uniform(-30, 30)
         y_val=random.uniform(-30, 30)
         
-        theta=random.uniform(0, 360)
-        psi=random.uniform(0, 360)
-        
+        theta=random.uniform(0, 2*np.pi)
         
         pose = airsim.Pose()
         
-        orientation= airsim.Quaternionr (1,0,theta, psi)
+        orientation= airsim.Quaternionr (0,0,np.sin(theta/2)*1,np.cos(theta/2))
         position = airsim.Vector3r ( x_val, y_val,-1)
         pose.position=position
         pose.orientation=orientation
-
             
         self.client.simSetVehiclePose(pose, ignore_collision=True)
         
