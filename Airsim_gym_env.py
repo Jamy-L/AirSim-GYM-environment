@@ -13,43 +13,19 @@ import matplotlib.pyplot as plt
 import cv2
 import random
 
+import sys
+sys.path.append("C:/Users/jamyl/Documents/GitHub/AirSim-GYM-environment")
+from jamys_toolkit import *
+
 
 import gym
 from gym import spaces
 
 from stable_baselines3 import SAC
 
-def convert_lidar_data_to_polar(lidar_data):
-    """
+import sys
+sys.path.append("C:/Users/jamyl/Documents/GitHub/AirSim-GYM-environment/jamys_toolkit.py")
     
-    Parameters
-    ----------
-    lidar_data : TYPE LidarData
-    
-        Transforms the lidar data to convert it to a real life format, that is from
-        (x_hit, y_hit, z_hit) to (angle_hit, distance_hit). Make sure to set
-        "DatFrame": "SensorLocalFrame" in the settings.JSON to get relative
-        coordinates from hit-points.
-        
-        Note : so far, only 2 dimensions lidar is supported. Thus, the Z coordinate
-        will simply be ignored
-
-    Returns
-    -------
-    converted_lidar_data=np.array([theta_1, ..., theta_n]) , np.array([r_1, ..., r_n]).
-
-    """
-    list=lidar_data.point_cloud
-    X=np.array(list[0::3])
-    Y=np.array(list[1::3])
-    
-    R=np.sqrt(X**2+Y**2)
-    T=np.arctan2(Y,X)
-    
-    # TODO
-    # Could somebody add the 3rd dimension ?
-    
-    return np.column_stack((T,R))
 
 
 class CustomEnv(gym.Env):
@@ -275,12 +251,20 @@ class CustomEnv(gym.Env):
         x_val=random.uniform(-30, 30)
         y_val=random.uniform(-30, 30)
         
+        x_val, y_val, z_val = 760 , 10310 , 400
+        Ue_position=np.array([x_val, y_val, z_val])
+        
+        spawn = np.array([0, 340,240])
+        rel_position = convert_global_to_relative_position(spawn, Ue_position)
+        
+        x_val, y_val, z_val =rel_position
+        
         theta=random.uniform(0, 2*np.pi)
         
         pose = airsim.Pose()
         
         orientation= airsim.Quaternionr (0,0,np.sin(theta/2)*1,np.cos(theta/2))
-        position = airsim.Vector3r ( x_val, y_val,-1)
+        position = airsim.Vector3r ( x_val, y_val, z_val)
         pose.position=position
         pose.orientation=orientation
             
@@ -362,6 +346,7 @@ class CustomEnv(gym.Env):
         
 
     def close (self):
+         client.simPause(False)
          client.enableApiControl(False)
 
 
@@ -372,6 +357,7 @@ class CustomEnv(gym.Env):
 
 
 ###############################################################################
+#RC circuit model lidar only branch
 
 # connect to the AirSim simulator
 client = airsim.CarClient()
@@ -380,16 +366,64 @@ client.simPause(True)
 client.enableApiControl(True)
 
 airsim_env=CustomEnv(client, dn=10 ,lidar_size=500)
-# Testing the model after learning
+airsim_env.reset()
+airsim_env.close()
 
-model = SAC.load("C:/Users/jamyl/Documents/GitHub/AirSim-GYM-environment/Training/32800",tensorboard_log="C:/Users/jamyl/Documents/GitHub/AirSim-GYM-environment/Training")
-obs = airsim_env.reset()
-while True:
-    action, _states = model.predict(obs, deterministic=True)
-    obs, reward, done, info = airsim_env.step(action)
-    airsim_env.render()
-    if done:
-      obs = airsim_env.reset()
+spawn = np.array([0, 340,240])
+
+# x_val, y_val, z_val = 3145 , 10350 , 280
+# Ue_position=np.array([x_val, y_val, z_val])
+
+# x_val, y_val, z_val = convert_global_to_relative_position(spawn, Ue_position)
+# Checkpoint1 = Checkpoint(x_val, y_val,5)
+
+# x_val, y_val, z_val = -665 , 9570 , 280
+# Ue_position=np.array([x_val, y_val, z_val])
+
+# x_val, y_val, z_val = convert_global_to_relative_position(spawn, Ue_position)
+# Checkpoint2 = Checkpoint(x_val, y_val,5, Checkpoint1)
+
+
+# x_val, y_val, z_val = 8785 , 9250 , 280
+# Ue_position=np.array([x_val, y_val, z_val])
+
+# x_val, y_val, z_val = convert_global_to_relative_position(spawn, Ue_position)
+# Checkpoint3 = Checkpoint(x_val, y_val,5, Checkpoint2)
+
+# Checkpoint1.next_checkpoint = Checkpoint3
+
+# Circuit1=Circuit([Checkpoint1])
+
+liste = [[3145,10350,10], [8785,9250,10], [-665, 9570,10]]
+
+Circuit1 = circuit_fromlist(liste, spawn,loop=True)
+while(True):
+    airsim_env.car_state = client.getCarState()
+    position = airsim_env.car_state.kinematics_estimated.position
+    gate, finish = Circuit1.cycle_tick(position.x_val, position.y_val)
+    if gate :
+        print("gate_passed")
+    if finish :
+        print("finish")
+        break
+
+# TODO normaliser l'espace des trajctoires par la taille de la voiture. Creer l'ensemble des points de spawn en en tirer un
+#  
+
+#%% Trainign a model
+models_dir = "C:/Users/jamyl/Desktop/TER_dossier/Training"
+logdir = "C:/Users/jamyl/Desktop/TER_dossier/Training"
+
+TIMESTEPS=100
+model = SAC("MultiInputPolicy", airsim_env, verbose=1,tensorboard_log=logdir)
+iters=0
+while(True):
+    iters=iters+1
+    model.learn(total_timesteps=TIMESTEPS, reset_num_timesteps=False, tb_log_name="SAC_Lidar_only_RC")
+    model.save(f"{models_dir}/{TIMESTEPS*iters}")
+    
+    
+
 
 #%% Load a previously trained model
 model = SAC.load("C:/Users/jamyl/Documents/GitHub/AirSim-GYM-environment/Training/32800",tensorboard_log="C:/Users/jamyl/Documents/GitHub/AirSim-GYM-environment/Training")
@@ -402,7 +436,15 @@ airsim_env.render()
 while(True):
     model.learn(total_timesteps=1000, reset_num_timesteps=False, tb_log_name="SAC_1")
 
+#%% Testing the model after learning
 
+model = SAC.load("C:/Users/jamyl/Documents/GitHub/AirSim-GYM-environment/Training/32800",tensorboard_log="C:/Users/jamyl/Documents/GitHub/AirSim-GYM-environment/Training")
+obs = airsim_env.reset()
+while True:
+    action, _states = model.predict(obs, deterministic=True)
+    obs, reward, done, info = airsim_env.step(action)
+    if done:
+      obs = airsim_env.reset()
 
 
 #%% Making random control
@@ -438,19 +480,7 @@ airsim_env.close()
 
 
 
-#%% Trainign a model
-models_dir = "C:/Users/jamyl/Desktop/TER_dossier/Training"
-logdir = "C:/Users/jamyl/Desktop/TER_dossier/Training"
 
-TIMESTEPS=100
-model = SAC("MultiInputPolicy", airsim_env, verbose=1,tensorboard_log=logdir)
-iters=0
-while(True):
-    iters=iters+1
-    model.learn(total_timesteps=TIMESTEPS, reset_num_timesteps=False, tb_log_name="SAC")
-    model.save(f"{models_dir}/{TIMESTEPS*iters}")
-    
-    
 
 
 
