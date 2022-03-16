@@ -31,7 +31,7 @@ sys.path.append("C:/Users/jamyl/Documents/GitHub/AirSim-GYM-environment/jamys_to
 class CustomEnv(gym.Env):
     """Custom Environment that follows gym interface"""
 
-    def __init__(self, client, lidar_size, dn,is_rendered=False):
+    def __init__(self, client, lidar_size, dn,UE_spawn_point, liste_checkpoints_coordinates, liste_spawn_point,is_rendered=False):
         """
         
 
@@ -72,6 +72,10 @@ class CustomEnv(gym.Env):
         self.total_reward=0
         self.done=False
         self.step_iterations=0
+        
+        self.UE_spawn_point = UE_spawn_point
+        self.liste_checkpoints_coordonnes = liste_checkpoints_coordonnes
+        self.liste_spawn_point = liste_spawn_point
         
         
         
@@ -246,20 +250,17 @@ class CustomEnv(gym.Env):
 
 
         # be careful, the call arguments for quaterninons are x,y,z,w 
+        
 
+        
+        Circuit_wrapper1=Circuit_wrapper(self.liste_spawn_point, self.liste_checkpoints_coordonnes, UE_spawn_point=self.UE_spawn_point)
+        spawn_point, theta, self.Circuit1 = Circuit_wrapper1.sample_random_spawn_point()
+        
+        
+        
+        x_val,y_val,z_val = spawn_point.x, spawn_point.y, spawn_point.z
+        
 
-        x_val=random.uniform(-30, 30)
-        y_val=random.uniform(-30, 30)
-        
-        x_val, y_val, z_val = 760 , 10310 , 400
-        Ue_position=np.array([x_val, y_val, z_val])
-        
-        spawn = np.array([0, 340,240])
-        rel_position = convert_global_to_relative_position(spawn, Ue_position)
-        
-        x_val, y_val, z_val =rel_position
-        
-        theta=random.uniform(0, 2*np.pi)
         
         pose = airsim.Pose()
         
@@ -267,7 +268,6 @@ class CustomEnv(gym.Env):
         position = airsim.Vector3r ( x_val, y_val, z_val)
         pose.position=position
         pose.orientation=orientation
-            
         self.client.simSetVehiclePose(pose, ignore_collision=True)
         
     ##########
@@ -348,8 +348,39 @@ class CustomEnv(gym.Env):
     def close (self):
          client.simPause(False)
          client.enableApiControl(False)
+         
 
 
+    def spawn_points_checker(self, wait_time=2):
+        self.close()
+        i=0
+        for spawn_point in self.liste_spawn_point:
+            print("Spawn : " + str(i)+'\n')
+            theta_m = spawn_point.theta_min
+            theta_M = spawn_point.theta_max            
+            x_val,y_val,z_val = spawn_point.x, spawn_point.y, spawn_point.z
+        
+
+            pose = airsim.Pose()
+            print('\tTheta min = '+str(theta_m))
+            orientation= airsim.Quaternionr (0,0,np.sin(theta_m/2)*1,np.cos(theta_m/2))
+            position = airsim.Vector3r ( x_val, y_val, z_val)
+            pose.position=position
+            pose.orientation=orientation
+            self.client.simSetVehiclePose(pose, ignore_collision=True)
+            time.sleep(wait_time)
+            
+            print('\tTheta max = '+str(theta_M))
+            orientation= airsim.Quaternionr (0,0,np.sin(theta_M/2)*1,np.cos(theta_M/2))
+            position = airsim.Vector3r ( x_val, y_val, z_val)
+            pose.position=position
+            pose.orientation=orientation
+            self.client.simSetVehiclePose(pose, ignore_collision=True)
+            time.sleep(wait_time)
+            i+=1
+            
+            
+            
 
 
 
@@ -365,42 +396,80 @@ client.confirmConnection()
 client.simPause(True)
 client.enableApiControl(True)
 
-airsim_env=CustomEnv(client, dn=10 ,lidar_size=500)
+spawn = np.array([0, 340,240])
+
+
+liste_checkpoints_coordonnes = [[3145,10350,10], [8785,9250,10],[4095,8070, 10], [-665, 9570,10]]
+
+liste_spawn_point=[]
+
+##################### 0 #################
+spawn1= Circuit_spawn(-920, 10310, 400, -np.pi/8, np.pi/2.5,checkpoint_index=0,spawn_point=spawn)
+liste_spawn_point.append(spawn1)
+
+spawn2 = Circuit_spawn(760, 10310, 400, -np.pi/2.5, np.pi/2.5,checkpoint_index=0,spawn_point=spawn)
+liste_spawn_point.append(spawn2)
+
+
+spawn3 = Circuit_spawn(1523.6, 9975, 400, -np.pi/2.5, np.pi/2.5,checkpoint_index=0,spawn_point=spawn)
+liste_spawn_point.append(spawn3)
+
+############# 1 ############
+spawn4 = Circuit_spawn(5123.6, 10225, 400, -np.pi/2.5, np.pi/2.5,checkpoint_index=1,spawn_point=spawn)
+liste_spawn_point.append(spawn4)
+
+spawn5 = Circuit_spawn(6023.6, 9975, 400, -np.pi/2.5, np.pi/2.5,checkpoint_index=1,spawn_point=spawn)
+liste_spawn_point.append(spawn5)
+
+############ 2 ##################
+
+spawn6 = Circuit_spawn(8913.6, 7955, 400,3* np.pi/4,5*np.pi/4,checkpoint_index=2,spawn_point=spawn)
+liste_spawn_point.append(spawn6)
+
+spawn7 = Circuit_spawn(6980, 8040, 400,3* np.pi/4,5*np.pi/4,checkpoint_index=2,spawn_point=spawn)
+liste_spawn_point.append(spawn7)
+
+spawn8 = Circuit_spawn(4963.6, 7795, 400, 3* np.pi/4,5*np.pi/4,checkpoint_index=2,spawn_point=spawn)
+liste_spawn_point.append(spawn8)
+
+############## 3 #####################
+
+spawn9 = Circuit_spawn(3330, 8040, 400, 3* np.pi/4,5*np.pi/4,checkpoint_index=3,spawn_point=spawn)
+liste_spawn_point.append(spawn9)
+
+spawn10 = Circuit_spawn(590, 8040, 400, 3* np.pi/4,5*np.pi/4,checkpoint_index=3,spawn_point=spawn)
+liste_spawn_point.append(spawn10)
+
+spawn10 = Circuit_spawn(-920, 8040, 400, np.pi/3, 2*np.pi/3,checkpoint_index=3,spawn_point=spawn)
+liste_spawn_point.append(spawn10)
+
+
+
+
+
+
+
+
+airsim_env=CustomEnv(client, dn=10 ,lidar_size=500,
+                     UE_spawn_point=spawn,
+                     liste_checkpoints_coordinates = liste_checkpoints_coordonnes,
+                     liste_spawn_point = liste_spawn_point)
+
+
 airsim_env.reset()
 airsim_env.close()
 
-spawn = np.array([0, 340,240])
-
-# x_val, y_val, z_val = 3145 , 10350 , 280
-# Ue_position=np.array([x_val, y_val, z_val])
-
-# x_val, y_val, z_val = convert_global_to_relative_position(spawn, Ue_position)
-# Checkpoint1 = Checkpoint(x_val, y_val,5)
-
-# x_val, y_val, z_val = -665 , 9570 , 280
-# Ue_position=np.array([x_val, y_val, z_val])
-
-# x_val, y_val, z_val = convert_global_to_relative_position(spawn, Ue_position)
-# Checkpoint2 = Checkpoint(x_val, y_val,5, Checkpoint1)
-
-
-# x_val, y_val, z_val = 8785 , 9250 , 280
-# Ue_position=np.array([x_val, y_val, z_val])
-
-# x_val, y_val, z_val = convert_global_to_relative_position(spawn, Ue_position)
-# Checkpoint3 = Checkpoint(x_val, y_val,5, Checkpoint2)
-
-# Checkpoint1.next_checkpoint = Checkpoint3
-
-# Circuit1=Circuit([Checkpoint1])
-
-liste = [[3145,10350,10], [8785,9250,10], [-665, 9570,10]]
-
-Circuit1 = circuit_fromlist(liste, spawn,loop=True)
-while(True):
-    airsim_env.car_state = client.getCarState()
-    position = airsim_env.car_state.kinematics_estimated.position
-    gate, finish = Circuit1.cycle_tick(position.x_val, position.y_val)
+while(True):   
+    airsim_env.client.car_state = airsim_env.client.getCarState()
+    position = airsim_env.client.car_state.kinematics_estimated.position
+    gate, finish = airsim_env.Circuit1.cycle_tick(position.x_val, position.y_val)
+    collision_info = client.simGetCollisionInfo()
+    crash = collision_info.has_collided
+    if crash:
+        print("crash")
+        airsim_env.reset()
+        airsim_env.close()
+        
     if gate :
         print("gate_passed")
     if finish :

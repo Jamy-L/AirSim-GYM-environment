@@ -168,6 +168,71 @@ class Circuit():
             
         return gate_passed, end_race
 
+class Circuit_wrapper():
+    def __init__(self,circuit_spawn_list, list_checkpoint_coordinates, UE_spawn_point):
+        self.spawn_point_list = circuit_spawn_list
+        self.list_checkpoint_coordinates = list_checkpoint_coordinates
+        self.UE_spawn_point=UE_spawn_point
+        
+    def sample_random_spawn_point(self):
+        self.selected_spawn_point = random.choice(self.spawn_point_list)
+        self.theta_spawn = random.uniform(self.selected_spawn_point.theta_min, self.selected_spawn_point.theta_max)
+        
+        self.generate_circuit(self.selected_spawn_point)
+        
+        return self.selected_spawn_point , self.theta_spawn, self.circuit
+    
+    
+    def generate_circuit(self, selected_spawn_point):
+        liste_checkpoints=self.list_checkpoint_coordinates
+        index_recalage = selected_spawn_point.checkpoint_index
+        liste_checkpoints = liste_checkpoints[index_recalage:]+liste_checkpoints[0:index_recalage] #recalage de l'ordre des checkpoints
+        self.circuit = circuit_fromlist(liste_checkpoints, self.UE_spawn_point)
+        
+    
+    
+class Circuit_spawn():
+    def __init__(self, x, y, z, theta_min, theta_max, checkpoint_index, spawn_point):
+        '''
+        
+
+        Parameters
+        ----------
+        x : TYPE float
+            position of the circuit spawn point given by UE.
+        y : TYPE float
+            
+        z : TYPE float
+           
+        teta_min : float
+            in radians, minimum angle of deviation when spawning randomly at this point
+        teta_max : float
+            maximum angle
+        checkpoint_index : int
+            index of the first checkpoint that must be crossed. The index is
+            relative to the list original fed to circuit_fromlist()
+        spawn_point : TYPE numpy array
+            coordinates of the player spawn in UE
+
+        Returns
+        -------
+        None.
+
+        '''
+        x,y,z = convert_global_to_relative_position(spawn_point, np.array([x,y,z]))
+        self.x=x
+        self.y=y
+        self.z=z
+        
+        self.theta_min=theta_min
+        self.theta_max=theta_max
+        
+        self.checkpoint_index=checkpoint_index
+        
+        
+        
+        
+        
 
 def circuit_fromlist(list_checkpoint_coordinates, spawn_point, loop=True):
     """
