@@ -40,6 +40,23 @@ def convert_lidar_data_to_polar(lidar_data):
     
     return np.column_stack((T,R))
 
+def fetch_action(client):
+    '''
+    Returns the vehicule command performed by the human user, on an MDP formt
+
+    Parameters
+    ----------
+    client : TYPE AirSim client
+        AirSim client
+
+    Returns
+    -------
+    TYPE numpy array
+        ([throttle, steering])
+
+    '''
+    controls = client.getCarControls()
+    return np.array([controls.throttle , controls.steering])
 
 def convert_global_to_relative_position(Ue_spawn_point, Ue_global_point):
     """

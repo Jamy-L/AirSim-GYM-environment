@@ -8,6 +8,8 @@ Created on Thu Feb 17 15:05:35 2022
 import numpy as np
 import airsim
 from stable_baselines3.common.env_checker import check_env
+from stable_baselines3.common.buffers import DictReplayBuffer
+from stable_baselines3.common.save_util import save_to_pkl
 import time
 import matplotlib.pyplot as plt
 import cv2
@@ -15,7 +17,7 @@ import random
 
 import sys
 sys.path.append("C:/Users/jamyl/Documents/GitHub/AirSim-GYM-environment")
-from jamys_toolkit import *
+from jamys_toolkit import Circuit_wrapper, convert_lidar_data_to_polar, Circuit_spawn, fetch_action
 
 
 import gym
@@ -141,6 +143,7 @@ class CustomEnv(gym.Env):
         while not self.client.simIsPause():
             pass
 
+
         
 
     # Get the state from AirSim
@@ -148,6 +151,9 @@ class CustomEnv(gym.Env):
         
         self.prev_throttle = np.array([action[0]])
         self.prev_steering = np.array([action[1]])
+        
+        position = self.car_state.kinematics_estimated.position
+        gate_passed, finished_race = self.Circuit1.cycle_tick(position.x_val, position.y_val) #updating the checkpoint situation
 
 
 
@@ -183,18 +189,17 @@ class CustomEnv(gym.Env):
         collision_info = client.simGetCollisionInfo()
         crash = collision_info.has_collided
         
-        
+        reward = 0
         if crash:
             reward =-100
             
             
         elif self.car_state.speed <=1: # Lets force the car to move
             reward = -0.1
-            
-        else:
-            reward = 0.1*self.car_state.speed #the faster the better
 
-
+        if gate_passed : 
+            reward += 50
+            print("gate_passed")
         
         self.total_reward = self.total_reward + reward
 
@@ -205,17 +210,6 @@ class CustomEnv(gym.Env):
     # penalty or not
         
     
-        break_condition=False #placeholder
-        position = self.car_state.kinematics_estimated.position
-        if position.x_val**2+position.y_val**2 >= 20000:
-            print('breaking out')
-            break_condition=True
-        
-
-        
-        if break_condition:
-            self.done = True
-            print("Episode reward : " + str(self.total_reward) + 2*'\n')
         
         if crash:
             self.done=True
@@ -446,16 +440,91 @@ liste_spawn_point.append(spawn10)
 
 
 
-
-
-
-
-airsim_env=CustomEnv(client, dn=10 ,lidar_size=500,
+airsim_env=CustomEnv(client, dn=10 ,lidar_size=200,
                      UE_spawn_point=spawn,
                      liste_checkpoints_coordinates = liste_checkpoints_coordonnes,
                      liste_spawn_point = liste_spawn_point)
 
+path = "C:/Users/jamyl/Desktop/DUMP/'filename_pi.obj'"
 
+
+
+
+
+# Loading the replay buffer and training on that
+models_dir = "C:/Users/jamyl/Desktop/TER_dossier/Training"
+logdir = "C:/Users/jamyl/Desktop/TER_dossier/Training"
+
+TIMESTEPS=100
+model = SAC("MultiInputPolicy", airsim_env, verbose=1,tensorboard_log=logdir) 
+model.load_replay_buffer(path)
+model.replay_buffer.device='cuda' # TODO is it really working ??
+buffer = model.replay_buffer
+
+iters=0
+while(True):
+    iters=iters+1
+    model.learn(total_timesteps=TIMESTEPS, reset_num_timesteps=False, tb_log_name="SAC_Lidar_only_RC")
+    model.save(f"{models_dir}/{TIMESTEPS*iters}")
+    
+
+
+
+#%% gathering teacher data to save in a replay buffer
+
+playing_time = 300 #in seconds
+
+
+
+airsim_env.reset()
+airsim_env.close()
+
+
+
+replay_buffer = DictReplayBuffer(
+                    buffer_size = 1_000_000,
+                    observation_space = airsim_env.observation_space,
+                    action_space = airsim_env.action_space
+                )
+
+
+client.simPause(True)
+action = fetch_action(client)
+observation, reward, done, info = airsim_env.step(np.array([0,0]))
+starting_time = time.time()
+while(True): 
+    action = fetch_action(client)
+    future_observation, future_reward, future_done, info = airsim_env.step(np.array([0,0]))
+    replay_buffer.add(observation, next_obs = future_observation, action = action,
+                      reward = reward, done = done, infos = [info])
+    observation, reward, done = future_observation, future_reward, future_done
+    if done :
+        airsim_env.reset()
+        
+    if time.time()-starting_time >=playing_time:
+        break
+
+print("saving...")
+save_to_pkl(path, replay_buffer)
+
+
+
+
+#%% Trainign a model
+models_dir = "C:/Users/jamyl/Desktop/TER_dossier/Training"
+logdir = "C:/Users/jamyl/Desktop/TER_dossier/Training"
+
+TIMESTEPS=100
+model = SAC("MultiInputPolicy", airsim_env, verbose=1,tensorboard_log=logdir)
+iters=0
+while(True):
+    iters=iters+1
+    model.learn(total_timesteps=TIMESTEPS, reset_num_timesteps=False, tb_log_name="SAC_Lidar_only_RC")
+    model.save(f"{models_dir}/{TIMESTEPS*iters}")
+    
+
+    
+#%% Playing on the circuit
 airsim_env.reset()
 airsim_env.close()
 
@@ -476,21 +545,18 @@ while(True):
         print("finish")
         break
 
-# TODO normaliser l'espace des trajctoires par la taille de la voiture. Creer l'ensemble des points de spawn en en tirer un
-#  
 
-#%% Trainign a model
-models_dir = "C:/Users/jamyl/Desktop/TER_dossier/Training"
-logdir = "C:/Users/jamyl/Desktop/TER_dossier/Training"
+#%% Testing the model after learning
 
-TIMESTEPS=100
-model = SAC("MultiInputPolicy", airsim_env, verbose=1,tensorboard_log=logdir)
-iters=0
-while(True):
-    iters=iters+1
-    model.learn(total_timesteps=TIMESTEPS, reset_num_timesteps=False, tb_log_name="SAC_Lidar_only_RC")
-    model.save(f"{models_dir}/{TIMESTEPS*iters}")
-    
+model = SAC.load("C:/Users/jamyl/Desktop/TER_dossier/Training/32100",tensorboard_log="C:/Users/jamyl/Documents/GitHub/AirSim-GYM-environment/Training")
+obs = airsim_env.reset()
+while True:
+    action, _states = model.predict(obs, deterministic=True)
+    obs, reward, done, info = airsim_env.step(action)
+    if done:
+      obs = airsim_env.reset()
+
+
     
 
 
@@ -504,16 +570,6 @@ airsim_env.render()
 
 while(True):
     model.learn(total_timesteps=1000, reset_num_timesteps=False, tb_log_name="SAC_1")
-
-#%% Testing the model after learning
-
-model = SAC.load("C:/Users/jamyl/Documents/GitHub/AirSim-GYM-environment/Training/32800",tensorboard_log="C:/Users/jamyl/Documents/GitHub/AirSim-GYM-environment/Training")
-obs = airsim_env.reset()
-while True:
-    action, _states = model.predict(obs, deterministic=True)
-    obs, reward, done, info = airsim_env.step(action)
-    if done:
-      obs = airsim_env.reset()
 
 
 #%% Making random control
