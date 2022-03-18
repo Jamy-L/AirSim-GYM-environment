@@ -16,7 +16,7 @@ A GYM environment is basically composed of 3 methods :
  <li> <code>reset()</code> basically acts as an initialisation, and is called everytime a simulation ends. That's where all the randomness occurs, to avoid overfitting. It has to return an observation too.</li>
  <li> <code>render()</code> is supposed to be (maybe) called once and to render the simulation each step. Here it's really not that useful since it will run anyway in Unreal Engine, but I have made a little plot of the lidar and camera, although the optimization is terrible (sorry) 😥</il>
  <li> <code> close()</code> is supposed to close the system. In this program it justs gives back the control to the player, so it's a great way to make sure a player can take control. </li>
- <li> <code> spawn_points_checker()</code> Was introduced by me. It just reviews all the spawn points and tests the extreme values of spawn angles for each, so you can visually check if there is no mistake.
+ <li> <code> spawn_points_checker()</code> Was introduced by me. It just reviews all the spawn points and tests the extreme values of spawn angles for each, so you can visually check if there are no mistake.
 </ol>
 
 ### Observations and actions
