@@ -20,9 +20,9 @@ A GYM environment is basically composed of 3 methods :
 </ol>
 
 ### Observations and actions
-Observation and actions spaces have to be specified while initing the environment in <code> __init__</code>. A lower and upper bound has to be predefined (you can put +infinite so it's not too restrictive), and the types have to be mentionned. It's generally a good idea to simulate a first order memory by adding the previous step's action and observations as an obervation.
+Observation and actions spaces have to be specified while initiating the environment in <code> __init__</code>. A lower and upper bound have to be predefined (you can put +infinite so it's not too restrictive), and the types have to be mentionned. It's generally a good idea to simulate a first order memory by adding the previous step's action and observations as an obervation.
 
-I propose to take AirSim's lidar data as an observation vector. The SETTINGS.JSON file contains all the settings related to that (number of points, speed, angle, channel number ...). Keep in mind that the lidar data's size is changing at each step depending on what the lidar is hitting... To that I propose a very simple fix : if there are too many point : crop them. If there are too many : make a padding and just recopy one of the points. Also, <code>jamyys_toolkit.py</code> contains a function to convert the cartasian coordinates to polar. Just make sure to set global coordinates to relative coordinates in SETTINGS.JSON.
+I propose to take AirSim's lidar data as an observation vector. The SETTINGS.JSON file contains all the settings related to that (number of points, speed, angle, channel number ...). Keep in mind that the lidar data's size is changing at each step depending on what the lidar is hitting... To that I propose a very simple fix : if there are too many point : crop them. If there are too little points : make a padding and just recopy one of the points. Also, <code>jamyys_toolkit.py</code> contains a function to convert the cartasian coordinates to polar. Just make sure to set global coordinates to relative coordinates in SETTINGS.JSON.
 
 Camera feed is also a good observation source, but it's very expensive.
 
