@@ -12,7 +12,7 @@ Stable Baselines 3 provides a set of very performent and modulable RL algorithms
 A GYM environment is basically composed of 3 methods : 
 <ol>
  <li> <code>step()</code> takes an action input and performs it on the system.
-      It is then returning an observation following the action, a computed reward estimated for the timestep, a boolean indicating whether or not the episode should be finished, and some debugging infos. In this project, the time step is configurable as a number of frames to simulate or a given simulation time to elapse. It is not really clear which choice makes more sense so... make your choice ?</li>
+      It is then returning an observation following the action, a computed reward estimated for the timestep, a boolean indicating whether or not the episode should be finished, and some debugging infos. In this project, the time step is configurable as a given simulation time to elapse before further decision making. Please read the dedicated section for more information on this choice</li>
  <li> <code>reset()</code> basically acts as an initialisation, and is called everytime a simulation ends. That's where all the randomness occurs, to avoid overfitting. It has to return an observation too.</li>
  <li> <code>render()</code> is supposed to be (maybe) called once and to render the simulation each step. Here it's really not that useful since it will run anyway in Unreal Engine, but I have made a little plot of the lidar and camera, although the optimization is terrible (sorry) 😥</il>
  <li> <code> close()</code> is supposed to close the system. In this program it justs gives back the control to the player, so it's a great way to make sure a player can take control. </li>
@@ -45,4 +45,14 @@ For respawn points, you can make the same thing and specify a minimum and maxima
  <li> -0.1*speed points when the speed is below is under 1 m/s (no slowpoke on the racing track !) </li>
  <ul>
   "going fast" is implicitly a synonym of marking a lot points, since the episode time is capped at 1000 steps (reached if there is no crash).
+  
+  ## About time steps and speed
+  AirSim's API gives the choice between waiting a few frames or waiting a given simulated time. I want to lay the emphasis on the "simulated time" therm : if you set in setting.JSON the simulation clock to be 10 times faster than the real time (for example because you are training a sample ineficient agent 😉), and use <code>client.simContinueForTime(1)</code>, the simulated duration will be 1 second and you, as a human being sitting on your chair, will see it running for (around) 0.1 seconds. It means <code>client.simContinueForTime()</code> is a much better choice than <code>client.simContinueForFrames()</code> because : 
+  <ul>
+   <li> <code>client.simContinueForTime()</code> is consistent with dilatation or contraction of simulation clock, speed. The agent decision will be made every fixed time step dt, regardless of the dilatation, whereas <code>client.simContinueForFrames()</code> has to be manually adapted for every time step to be consistent </li>
+   <li> <code>client.simContinueForTime()</code> has a physical meaning, and is directly implementable for inboard systems. It's especially relevant for sim-to-real applications, where an inboard OS will sample observations and require an action at fixed timle steps </li>
+   <li> <code>client.simContinueForFrames()</code> is sensible to the variations of the GPU and CPU workload. Simulation sampling may not be periodic enough for an agent to learn how to evaluate speed. It may be a very pernicious issue especially if the simulation is running on a regular computer with other tasks running (like a python shell training a network ... 😶)
+    </ul>
+  
+  
  
