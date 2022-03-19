@@ -43,16 +43,33 @@ For respawn points, you can make the same thing and specify a minimum and maxima
  <li> -100 points in case of crash, and the episode is ending </li>
  <li> +50 points when a checkpoint is validated </li>
  <li> -0.1*speed points when the speed is below is under 1 m/s (no slowpoke on the racing track !) </li>
- <ul>
+ </ul>
   "going fast" is implicitly a synonym of marking a lot points, since the episode time is capped at 1000 steps (reached if there is no crash).
   
-  ## About time steps and speed
-  AirSim's API gives the choice between waiting a few frames or waiting a given simulated time. I want to lay the emphasis on the "simulated time" therm : if you set in setting.JSON the simulation clock to be 10 times faster than the real time (for example because you are training a sample ineficient agent 😉), and use <code>client.simContinueForTime(1)</code>, the simulated duration will be 1 second and you, as a human being sitting on your chair, will see it running for (around) 0.1 seconds. It means <code>client.simContinueForTime()</code> is a much better choice than <code>client.simContinueForFrames()</code> because : 
-  <ul>
-   <li> <code>client.simContinueForTime()</code> is consistent with dilatation or contraction of simulation clock, speed. The agent decision will be made every fixed time step dt, regardless of the dilatation, whereas <code>client.simContinueForFrames()</code> has to be manually adapted for every time step to be consistent </li>
-   <li> <code>client.simContinueForTime()</code> has a physical meaning, and is directly implementable for inboard systems. It's especially relevant for sim-to-real applications, where an inboard OS will sample observations and require an action at fixed timle steps </li>
-   <li> <code>client.simContinueForFrames()</code> is sensible to the variations of the GPU and CPU workload. Simulation sampling may not be periodic enough for an agent to learn how to evaluate speed. It may be a very pernicious issue especially if the simulation is running on a regular computer with other tasks running (like a python shell training a network ... 😶)
-    </ul>
+  ## About time steps and simulation speed
+  This is a very though matter. Simulating a Markov decision process generally requires to chose a time step separing two action. Typically, GYM scheme is "fetch observation"-"choose action"-"calling a simulation step". To simulate this scheme, my method is to have the simulation paused at all time, except for the specific window where <code> step()</code> is called. In itself, this method has it flaws because real environment will not pause when calculations are made. However, the delays involved by inference are neglectable with regards to the delays involed with training a network. I believe the key element is to ensure that observations (both for a simulated and real environment) are fetched with regular time steps, because it enables some sort of speed estimation based on a first order memory of spacial observation. This behaviour is achievable on a real system thanks to onboard OS and proper task ordonnancing.
   
+### What time is it?
+  However, that being said, the time step problem is far from being solved. When speaking of clocks/frequencies/framerate/speed, many protagonists come to action.
+  <ul>
+ <li> Unreal Engine is a video games engine that need to generate a certain number of frames per second. The FPS are dependant on the hardware running the environment, and on the system's different active tasks. The FPS are not only a visual asset, they also intervene in the physics engine, and must be kept around a reasonable value. Typically, staying over 30 FPS is a must, and I believe it's impossible to get over 120 FPS. </li>
+ <li> PhysX is taking care of the vehicule's physics, by applying a finite difference scheme over time. This time step in particular is not easily reachable, but is tremendously important for simulating a realistic behaviour. For that reason, we have to ensure that this time step is not too big, because it would significantly worsen realism. For example, collisions would not be properly detected. I have also experimentally observed that when this time step gets too big, the dynamic behaviour changes a lot. A constant acceleration on a straight line would not get the car as far as it would with a shorter time step, although they are driving for the same duration with the same speed. I will delve further on this issue later </li>
+ <li> AirSim also has it's inner clock. It can be scaled in SETTINGS.JSON, which is really handy to speed up trainign by speeding simulations. </li>
+ <li> The computer running the simulation itself has its own real time clock. <code> time.sleep()</code> enables to wait for a given real time between samples</li>
+ </ul>
+ 
+### So which clock should be used?
+ A first idea is to use AirSim API's <code>simContinueForFrames()</code> or <code>simContinueForTime()</code>. However, I have found that this approach is not that good. First of all, a "frame step" doesn't really makes sense in my opinion because it's very hard to transpose on a real environment. Furthermore, framerate drops due to external activities must be taken into account, and it impossible to predict how the framerate will react when you are doubling the simulation clock.
+ 
+ <code>simContinueForTime()</code> Sounds good, but is a trap in my opinion. It is very inconsistent with short time steps, and clock scaling factors. This feature is discussed among the AirSim community, so I have decided to completely abandon it.
+ 
+ My conclusion is that <code> time.sleep()</code> is the stepping method to use (you can of course use a dedicated thread instead, if you find it useful). Let's say for now that the time sclaing factor is 1. My main argument is that Unreal Engine is meant to simulate real time environments, with framerates above 30 FPS. Therefore, in that scenario, 1s in real life / on the processor clock accounts for 1s in the simulation. The FPS are dynamically adjusting to ensure that the simulation is indeed real time, although this objective cannot be achived if the FPS are dropping below 30 FPS (in that case the simulation clock will become slower than the real world clock). When the scaling factor is different than 1 (let's say it is bigger), physX needs to compute more time steps during a given time. We may talk of "effective framerate" equal to apparent framerate divided by clock scaling factor (FPS/Scale). For example, if my computer runs AirSim at 40 FPS, and I set a scaling factor of 4, it means that the effective FPS will be 10, which is much below 30FPS. In that case, PhysX time step will not be precise enough, and the physics will not be precise at all.
+ 
+ Therefore, I believe that the tradoff is to find the biggest scaling factor verifying FPS/factor >= 30. Since UE doesn't seem to go above 120FPS, a scaling factor bewteen 3 and 4 seems optimal (if your machine can run it at 120 FPS of course). The stepping method should thus call <code> time.sleep(time/scale)</code> or something similar.
+ 
+ 
+ 
+ 
+ 
   
  
