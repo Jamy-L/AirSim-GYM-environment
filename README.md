@@ -101,18 +101,18 @@ For respawn points, you can make the same thing and specify a minimum and maxima
  
  By default, Stable Baselines simply iterates through all the observations keys and makes the following :
  <ul>
- <il> If the observation is an image, a normalisation is done and 3 layers of convolutions are applied, followed by a linear transformation to make sure the number of features extracted from the image are right. (For more details on activatiokn function, kernel size and stride, refer to the original code)</li>
- <il> If the observation is not an image, a <code>Flatten</code> layer is simply applied. If you are not familiar with PyTorch's terminology, it just means that all your columns are concatenated one after the other to form a vector.</il>
+ <li> If the observation is an image, a normalisation is done and 3 layers of convolutions are applied, followed by a linear transformation to make sure the number of features extracted from the image are right. (For more details on activation function, kernel size and stride, refer to the original code)</li>
+ <li> If the observation is not an image, a <code>Flatten</code> layer is simply applied. If you are not familiar with PyTorch's terminology, it just means that all your columns are concatenated one after the other to form a vector.</li>
  </ul>
 
  The extracted feature for every observation key are then once again concatenated into a single big 1D vector.
  
  This feature extractor is in my opinion sub-optimal, espcially for treating lidar data. In our case, a lidar data is a 2 by N array, here N represents the number of lidar point collected. Therefore, a simple <code>Flatten</code> layer cannot extract feature with accuracy.
  
- I propose to use a couples of convolution layers on the lidar data, as the relation between each successive radius measure seem to carry precious information, indepently from the global coordinate in the array. For example, the first point appearing in the observation array (r1, th1) changes of meaning at every observation, since th1 is never the same. Therefore, a fully connected /Muli layer perceptron is bound to perform a bad feature extraction.
- On the contrary, studying a relation between r1, r2, r3,... can lead to detect a wall, a corner or a "hole". A convolution filter will summ ponderations onf the ri, and may for example develop sets of spacially auto-regressive models : One for detecting corner, one for straight lines. A big gap between and ri and his auto-regressive predicted value may indicate that there is a gap for this considerated point.
+ I propose to use a couple of convolution layers on the lidar data, as the relation between each successive radius measure seems to carry precious information, indepently from the global coordinate in the array. For example, the first point appearing in the observation array (r1, th1) changes of meaning at every observation, since th1 is never the same. Therefore, a fully connected network/Multi layer perceptron is bound to perform a bad feature extraction.
+ On the contrary, studying a relation between r1, r2, r3,... can lead to detect a wall, a corner or a "hole". A convolution filter will summ ponderations of the ri, and may for example develop sets of spacially auto-regressive models : One for detecting corner, one for straight lines. A big gap between and ri and his auto-regressive predicted value may indicate that there is a gap for this considerated point.
  
- This is just an example of why I beieve a convolution layer makes sense. When lay also imagine that lidar data could in our case translate to a 2D map from the sky taking two values : one for the absence of wall, and another when a wall is detected. It would then make sense to use a convolution layer on such an image and I have no doubt that significant features would be extracted.
+ This is just an example of why I beieve a convolution layer makes sense. Whe may also imagine that lidar data could in our case translate to a 2D map from the sky view, taking two values : one for the absence of wall, and another when a wall is detected. It would then make sense to use a convolution layer on such an image and I have no doubt that significant features would be extracted (although such a method would not be the most efficient).
  
  In practice, nothing such has to be implemented, simply choosing the hyper-parameters of the filter, like stride, padding, size and activation.
  
