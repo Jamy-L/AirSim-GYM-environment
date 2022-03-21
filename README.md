@@ -9,7 +9,7 @@ You should also check GYM (https://gym.openai.com/) which is a python environmen
 Stable Baselines 3 provides a set of very performants and modulable RL algorithms and is based on PyTorch. Make sure to have a clean install of the latter (https://stable-baselines3.readthedocs.io/en/master/)
 
 ## Presentation
-A GYM environment is basically composed of 3 methods : 
+A GYM environment is basically composed of 3 methods: 
 <ol>
  <li> <code>step()</code> takes an action input and performs it on the system.
       It is then returning an observation following the action, a computed reward estimated for the timestep, a boolean indicating whether or not the episode should be finished, and some debugging infos. In this project, the time step is configurable as a given time to elapse before further decision making. Please read the dedicated section for more information on this choice</li>
@@ -22,7 +22,7 @@ A GYM environment is basically composed of 3 methods :
 ### Observations and actions
 Observation and actions spaces have to be specified while initiating the environment in <code> __init__</code>. A lower and upper bound have to be predefined (you can put +infinite so it's not too restrictive), and the types have to be mentioned. It's generally a good idea to simulate a first order memory by adding the previous step's action and observations as an observation.
 
-I propose to take AirSim's lidar data as an observation vector. The SETTINGS.JSON file contains all the settings related to that (number of points, speed, angle, channel number ...). Keep in mind that the lidar data's size is changing at each step depending on what the lidar is hitting... To that I propose a very simple fix : if there are too many points: crop them. If there are too little points : make a padding and just recopy one of the points. Also, <code>jamyys_toolkit.py</code> contains a function to convert the cartesian coordinates to polar. Just make sure to set global coordinates to relative coordinates in SETTINGS.JSON.
+I propose to take AirSim's lidar data as an observation vector. The SETTINGS.JSON file contains all the settings related to that (number of points, speed, angle, channel number ...). Keep in mind that the lidar data's size is changing at each step depending on what the lidar is hitting... To that I propose a very simple fix: if there are too many points: crop them. If there are too little points: make a padding and just recopy one of the points. Also, <code>jamyys_toolkit.py</code> contains a function to convert the cartesian coordinates to polar. Just make sure to set global coordinates to relative coordinates in SETTINGS.JSON.
 
 Camera feed is also a good observation source, but it's very expensive.
 
@@ -38,7 +38,7 @@ I have implemented a random respawn and checkpoint system. Just add collision-fr
 For respawn points, you can make the same thing and specify a minimum and maximal deviation angle (when spawning, a random value will be sampled between the two). You also need to manually specify what is the index of the first checkpoint to validate, since it depends on where the car is spawning.
 
  ### Reward
- Reward is calculated as : 
+ Reward is calculated as: 
  <ul>
  <li> -100 points in case of crash, and the episode is ending </li>
  <li> +50 points when a checkpoint is validated </li>
@@ -76,10 +76,10 @@ For respawn points, you can make the same thing and specify a minimum and maxima
  These details being cleared, SAC and TD3 appear to be the most logical choice. I have personally chosen to use SAC because I was more familiar with it.
  
  ## Workings with SAC
- SAC is explained in more details here : https://stable-baselines3.readthedocs.io/en/master/modules/sac.html
+ SAC is explained in more details here: https://stable-baselines3.readthedocs.io/en/master/modules/sac.html
  It is strongly recommended to read the original article to understand the inner core of the algorithm.
  
- In a pragmatic way, three protagonists come to action during the training : 
+ In a pragmatic way, three protagonists come to action during the training: 
  <ul>
  <li> A critic network learns to predict the expected reward for any action, in a given state. There are actually 2 critic networks being trained at each step, and the best one is selected every time.</li>
  <li> The entropy coefficient basically regulates whether policies will rather explore or exploit the environment. It is evolving during the training, and helps a long to stabilize the learning process. Generally, the coefficient starts at a high value, and converges toward 0 at the end of training.</li>
@@ -94,7 +94,7 @@ For respawn points, you can make the same thing and specify a minimum and maxima
  
  
  ### Feature extraction
- What is not crystal clear at first sight is the link between "state" and "observation". An observation is in our case a dictionary, containing sets of observations of different types, while a state must be a 1d array which will be fed to the critic and the actor networks. A pre-processing layer called <code>feature_extractor</code> is actually transforming the observation to an estimated state. Stable Baselines uses by default a shared feature extractor for the actor and the critic, which makes sense in our case. (You can read more about that here : https://stable-baselines3.readthedocs.io/en/master/guide/custom_policy.html)
+ What is not crystal clear at first sight is the link between "state" and "observation". An observation is in our case a dictionary, containing sets of observations of different types, while a state must be a 1d array which will be fed to the critic and the actor networks. A pre-processing layer called <code>feature_extractor</code> is actually transforming the observation to an estimated state. Stable Baselines uses by default a shared feature extractor for the actor and the critic, which makes sense in our case. (You can read more about that here: https://stable-baselines3.readthedocs.io/en/master/guide/custom_policy.html)
  
  ![net_arch](https://user-images.githubusercontent.com/46826148/159230138-622e2266-8ae9-408e-b4e4-bd9505c970c3.png)
  
@@ -110,16 +110,16 @@ For respawn points, you can make the same thing and specify a minimum and maxima
  This feature extractor is in my opinion sub-optimal, especially for treating lidar data. In our case, a lidar data is a 2 by N array, here N represents the number of lidar point collected. Therefore, a simple <code>Flatten</code> layer cannot extract feature with accuracy.
  
  I propose to use a couple of convolution layers on the lidar data, as the relation between each successive radius measure seems to carry precious information, independently from the global coordinate in the array. For example, the first point appearing in the observation array (r1, th1) changes of meaning at every observation, since th1 is never the same. Therefore, a fully connected network/Multi layer perceptron is bound to perform a bad feature extraction.
- On the contrary, studying a relation between r1, r2, r3,... can lead to detect a wall, a corner or a "hole". A convolution filter will sum ponderations of the ri, and may for example develop sets of spatially auto-regressive models : One for detecting corner, one for straight lines. A big gap between and ri and his auto-regressive predicted value may indicate that there is a gap for this given point.
+ On the contrary, studying a relation between r1, r2, r3,... can lead to detect a wall, a corner or a "hole". A convolution filter will sum ponderations of the ri, and may for example develop sets of spatially auto-regressive models: One for detecting corner, one for straight lines. A big gap between and ri and his auto-regressive predicted value may indicate that there is a gap for this given point.
  
- This is just an example of why I believe a convolution layer makes sense. We may also imagine that lidar data could in our case translate to a 2D map from the sky view, taking two values : one for the absence of wall, and another when a wall is detected. It would then make sense to use a convolution layer on such an image and I have no doubt that significant features would be extracted (although such a method would not be the most efficient).
+ This is just an example of why I believe a convolution layer makes sense. We may also imagine that lidar data could in our case translate to a 2D map from the sky view, taking two values: one for the absence of wall, and another when a wall is detected. It would then make sense to use a convolution layer on such an image and I have no doubt that significant features would be extracted (although such a method would not be the most efficient).
  
  In practice, nothing such has to be implemented, simply choosing the hyper-parameters of the filter, like stride, padding, size and activation.
  
  
  
  
- Do bear in mind that in our case, two lidar data are observed :  The current one and the previous one, to simulate a first order memory. Obviously, the feature extractor for the current lidar should be the same as the previous lidar feature extractor (by that I mean that they should share the same parameters/weights). We can thus train a single lidar feature extractor.
+ Do bear in mind that in our case, two lidar data are observed:  The current one and the previous one, to simulate a first order memory. Obviously, the feature extractor for the current lidar should be the same as the previous lidar feature extractor (by that I mean that they should share the same parameters/weights). We can thus train a single lidar feature extractor.
  
  ### Off policy and replay buffer
  SAC is an off policy RL algorithm. It basically means that all trajectories recorded since the beginning of the learning can be used for every training step. It is tremendously important, because trajectories take a precious time to be recorded in our case, therefore remaking an entire database of trajectories for each policy iteration is not efficient nor feasible ... 
