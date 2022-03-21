@@ -67,6 +67,44 @@ For respawn points, you can make the same thing and specify a minimum and maxima
  
  Therefore, I believe that the tradoff is to find the biggest scaling factor verifying FPS/factor >= 30. Since UE doesn't seem to go above 120FPS, a scaling factor bewteen 3 and 4 seems optimal (if your machine can run it at 120 FPS of course). The stepping method should thus call <code> time.sleep(time/scale)</code> or something similar.
  
+ # My implementation of reinforcment learning methods to autonomous driving
+ 
+ The AirSim enviornment uses a continuous action space and a continuous observtion space. For clarity, the observations are of type "Multi Input" since lidar data, previous actions, and a picture are fetched every step. The action space is just a 2D vector containing steering and thorttle, therefore it is no multi input.
+ 
+ The continuity of the problems narrows the choice of RL algorithms. Furthermore, due to the nature of the environment, observation data will be very scarce, which gives off-policy algorithms a lead against on-policy algorithms.
+ 
+ These details being cleared, SAC and TD3 appear to be the most logical choice. I have personally chosen to use SAC because I was more familliar with it.
+ 
+ ## Workings with SAC
+ SAC is explained in more details here : https://stable-baselines3.readthedocs.io/en/master/modules/sac.html
+ It is strongly recommended to read the original article to understand the inner core of the algorithm.
+ 
+ In a pragmatic way, three protagonists come to action during the training : 
+ <ul>
+ <li> A critic network learns to predict the expected reward for any action, in a given state. There are actually 2 critic networks being trained at each step, and the best one is selected every time.</li>
+ <li> The entropy coefficient bascially regulates whether policies will rather explore or exploit the environment. It is evolving during the training, and helps a long to stabilize the learning process. Generally the coeffcient starts at a high value, and converges toward 0 at the end of training.</li>
+ 
+ <li> The actor network maps a probability to every action for each given state </li>
+ </ul>
+ 
+ All these protagonists evolve at the same time, their training is tightly linked. The trainings are of course based on collected trajectories, on which the training is done. After training, a policy is deployed on the environment to collect more trajectories (it may be trajectoiries of exploration or exploitation), and the process cycles. These two process are called <code>train</code> and <code>collect_rollout</code>
+ 
+ ### Off policy and replay buffer
+ SAC is an off policy RL algorithm. It basically means that all trajectories recorded since the beginning of the learning can be used for every training step. It is tremendously important, because trajectories take a precious time to be recorded in our case, therefore remaking an entire database of trajectories for each policy iteration is not efficient nor feasable ... 
+ 
+ In our case, a replay buffer contains all trajectories informations, namely each observation, state transition and action, along with the matching reward. I want to lay the emphasis on the fact that this guy can quickly become very heavy, especially when working with image observation.
+ During each <code>collect_rollout</code>, the trajectories are added to the replay buffer, and during each <code>train</code>, trajectories are randomly sampled from the replay buffer and stochastic gradient descent is done on all networks (we will go further on that point later).
+ 
+ The matter of replay buffer is not as simple as it may sound in the first place, and more advanced replay buffer may lead to significant gain of performances (see Hindsight Experience Replay ). However, I have made the choice of using a regular list, for the sake of simplicty of coding.
+ 
+ ### Pre-training from teacher's demontration based replay buffer
+ What is really nice about the replay buffer is that it is on no account used to evaluate a policy, but rather to learn how to model the environment. My idea on this point is to record the trajectories of a human teacher, to pretrain all the networks. The teacher controls the vehicle with a controller, and drives the car as he nromally would, while every action and observations are collected. The network is then trained a first time exclusively in this set of trajectories, which gives (I believe) a good initialisation for the feature extractor networks and the critic network. I am not really sure whether or not pretraining the actor newtwork is a good idea or not, as it seems to overfitt to an extent. The learning process is then exactly the same, but starts with a non empty replay buffer.
+ 
+ This approach has been strongly influenced by Andrew N.G's "Exploration and Apprenticeship Learning in Reinforcement Learning"
+ 
+ 
+ 
+ 
  
  
  
