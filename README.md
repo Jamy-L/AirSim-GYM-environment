@@ -87,7 +87,38 @@ For respawn points, you can make the same thing and specify a minimum and maxima
  <li> The actor network maps a probability to every action for each given state </li>
  </ul>
  
- All these protagonists evolve at the same time, their training is tightly linked. The trainings are of course based on collected trajectories, on which the training is done. After training, a policy is deployed on the environment to collect more trajectories (it may be trajectoiries of exploration or exploitation), and the process cycles. These two process are called <code>train</code> and <code>collect_rollout</code>
+ All these protagonists evolve at the same time, their training is tightly linked. The trainings are of course based on collected trajectories, on which the training is done. After training, a policy is deployed on the environment to collect more trajectories (it may be trajectoiries of exploration or exploitation), and the process cycles. These two process are called <code>train</code> and <code>collect_rollout</code> (read more here: https://stable-baselines3.readthedocs.io/en/master/guide/developer.html)
+ 
+ ![sb3_loop](https://user-images.githubusercontent.com/46826148/159230016-5d6be5a9-44b3-478c-bf0e-5c147db47886.png)
+ 
+ 
+ 
+ ### Feature extration
+ What is not crystal clear at first sight is the link between "state" and "observation". An observation is in our case a dictionnary, containing sets of observations of different types, while a state must be a 1d array which will be fed to the critic and the actor networks. A preprocessing layer called <code>feature_extractor</code> is actually transforming the observation to a estimated state. Stable Baselines uses by default a shared feature extractor for the actor and the critic, which makes sense in our case. (You can read more about that here : https://stable-baselines3.readthedocs.io/en/master/guide/custom_policy.html)
+ 
+ ![net_arch](https://user-images.githubusercontent.com/46826148/159230138-622e2266-8ae9-408e-b4e4-bd9505c970c3.png)
+ 
+ 
+ By default, Stable Baselines simply iterates through all the observations keys and makes the following :
+ <ul>
+ <il> If the observation is an image, a normalisation is done and 3 layers of convolutions are applied, followed by a linear transformation to make sure the number of features extracted from the image are right. (For more details on activatiokn function, kernel size and stride, refer to the original code)</li>
+ <il> If the observation is not an image, a <code>Flatten</code> layer is simply applied. If you are not familiar with PyTorch's terminology, it just means that all your columns are concatenated one after the other to form a vector.</il>
+
+ The extracted feature for every observation key are then once again concatenated into a single big 1D vector.
+ 
+ This feature extractor is in my opinion sub-optimal, espcially for treating lidar data. In our case, a lidar data is a 2 by N array, here N represents the number of lidar point collected. Therefore, a simple <code>Flatten</code> layer cannot extract feature with accuracy.
+ 
+ I propose to use a couples of convolution layers on the lidar data, as the relation between each successive radius measure seem to carry precious information, indepently from the global coordinate in the array. For example, the first point appearing in the observation array (r1, th1) changes of meaning at every observation, since th1 is never the same. Therefore, a fully connected /Muli layer perceptron is bound to perform a bad feature extraction.
+ On the contrary, studying a relation between r1, r2, r3,... can lead to detect a wall, a corner or a "hole". A convolution filter will summ ponderations onf the ri, and may for example develop sets of spacially auto-regressive models : One for detecting corner, one for straight lines. A big gap between and ri and his auto-regressive predicted value may indicate that there is a gap for this considerated point.
+ 
+ This is just an example of why I beieve a convolution layer makes sense. When lay also imagine that lidar data could in our case translate to a 2D map from the sky taking two values : one for the absence of wall, and another when a wall is detected. It would then make sense to use a convolution layer on such an image and I have no doubt that significant features would be extracted.
+ 
+ In practice, nothing such has to be implemented, simply choosing the hyper-parameters of the filter, like stride, padding, size and activation.
+ 
+ 
+ 
+ 
+ Do bear in mind that in our case, two lidar data are observed :  The current one and the previous one, to simulate a first order memory. Obviously, the feature extractor for the current lidar should be the same as the previous lidar feature extractor (by that I mean that they should share the same parameters/weights). We can thus train a single lidar feature extractor.
  
  ### Off policy and replay buffer
  SAC is an off policy RL algorithm. It basically means that all trajectories recorded since the beginning of the learning can be used for every training step. It is tremendously important, because trajectories take a precious time to be recorded in our case, therefore remaking an entire database of trajectories for each policy iteration is not efficient nor feasable ... 
@@ -98,7 +129,7 @@ For respawn points, you can make the same thing and specify a minimum and maxima
  The matter of replay buffer is not as simple as it may sound in the first place, and more advanced replay buffer may lead to significant gain of performances (see Hindsight Experience Replay ). However, I have made the choice of using a regular list, for the sake of simplicty of coding.
  
  ### Pre-training from teacher's demontration based replay buffer
- What is really nice about the replay buffer is that it is on no account used to evaluate a policy, but rather to learn how to model the environment. My idea on this point is to record the trajectories of a human teacher, to pretrain all the networks. The teacher controls the vehicle with a controller, and drives the car as he nromally would, while every action and observations are collected. The network is then trained a first time exclusively in this set of trajectories, which gives (I believe) a good initialisation for the feature extractor networks and the critic network. I am not really sure whether or not pretraining the actor newtwork is a good idea or not, as it seems to overfitt to an extent. The learning process is then exactly the same, but starts with a non empty replay buffer.
+ What is really nice about the replay buffer is that it is on no account used to evaluate a policy, but rather to learn how to model the environment. My idea on this point is to record the trajectories of a human teacher, to pretrain all the networks. The teacher controls the vehicle with a controller, and drives the car as he normally would, while every action and observations are collected. The network is then trained a first time exclusively on this set of trajectories, which gives (I believe) a good initialisation for the feature extractor networks and the critic network. I am not really sure whether or not pretraining the actor newtwork is a good idea or not, as it seems to overfitt to an extent. The learning process is then exactly the same, but starts with a non empty replay buffer.
  
  This approach has been strongly influenced by Andrew N.G's "Exploration and Apprenticeship Learning in Reinforcement Learning"
  
@@ -109,5 +140,8 @@ For respawn points, you can make the same thing and specify a minimum and maxima
  
  
  
+ 
   
  
+
+
