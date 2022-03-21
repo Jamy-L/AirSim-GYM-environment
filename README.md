@@ -103,6 +103,7 @@ For respawn points, you can make the same thing and specify a minimum and maxima
  <ul>
  <il> If the observation is an image, a normalisation is done and 3 layers of convolutions are applied, followed by a linear transformation to make sure the number of features extracted from the image are right. (For more details on activatiokn function, kernel size and stride, refer to the original code)</li>
  <il> If the observation is not an image, a <code>Flatten</code> layer is simply applied. If you are not familiar with PyTorch's terminology, it just means that all your columns are concatenated one after the other to form a vector.</il>
+ </ul>
 
  The extracted feature for every observation key are then once again concatenated into a single big 1D vector.
  
