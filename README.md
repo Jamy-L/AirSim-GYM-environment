@@ -121,6 +121,126 @@ For respawn points, you can make the same thing and specify a minimum and maxima
  
  Do bear in mind that in our case, two lidar data are observed:  The current one and the previous one, to simulate a first order memory. Obviously, the feature extractor for the current lidar should be the same as the previous lidar feature extractor (by that I mean that they should share the same parameters/weights). We can thus train a single lidar feature extractor.
  
+ ### On the technial side of feature extraction
+ Stable Baselines 3 uses 3 different "layers" for processing an observation :
+ <ul>
+ <li> Preprocessing applies a normalisation for images (from [0,255] to [0,1]), and applies casting, changes of format, conversion to torch tensors etc... </li>
+ <li> The Feature Extractors works with the pre-processed observation tensors, and returns a Tensor representig the state of the Markovian decision process</li>
+ <li> The rest of whatever you are doing, for example feed the actor network with the current estimated state to get a probability distribution over all action</li>
+ </ul>
+ 
+ Despite being seemingly a very dull task, preprocessing's play a tremendously important role in the algorithm. In our case, lidar data is a specific type that needs to be preprocessed separately from the rest, because it doesn't look like any sort of image, in the sense that r can vary from 0 to the infinite (There is maximum range reachable by the lidar, but you get the idea), and theta can vary from 0 to 360°. Instead of manually working with scaled and centered observation, the most logical way of doing is to modify the preprocessing layer to recognize and treat Lidar data accordingly.
+ 
+ Check <code>common/policies.py</code>. It includes the <code>BaseModel</code> class, from which the majority of RL algorithms inherit. It has a method called <code> extract_features()</code>? which is called whenever an observation is pushed through the network (if you are lost, I suggest to try a <code>model.predict()</code> with debugger on, to see where it is leading. You will ultimately arrive there).
+ 
+ ```python
+def extract_features(self, obs: th.Tensor) -> th.Tensor:
+   """
+   Preprocess the observation if needed and extract features.
+
+   :param obs:
+   :return:
+   """
+   assert self.features_extractor is not None, "No features extractor was set"
+   preprocessed_obs = preprocess_obs(obs, self.observation_space, normalize_images=self.normalize_images)
+   return self.features_extractor(preprocessed_obs)
+ ```
+ 
+ The terminology of Stable Baselines can be a bit confusing because as you can see, preprocessing seems included in the ferature extraction process.
+ Let's look closer at the latter : 
+ 
+ ```python
+ def preprocess_obs(
+    obs: th.Tensor,
+    observation_space: spaces.Space,
+    normalize_images: bool = True,
+) -> Union[th.Tensor, Dict[str, th.Tensor]]:
+    """
+    Preprocess observation to be to a neural network.
+    For images, it normalizes the values by dividing them by 255 (to have values in [0, 1])
+    For discrete observations, it create a one hot vector.
+
+    :param obs: Observation
+    :param observation_space:
+    :param normalize_images: Whether to normalize images or not
+        (True by default)
+    :return:
+    """
+    if isinstance(observation_space, spaces.Box):
+        if is_image_space(observation_space) and normalize_images:
+            return obs.float() / 255.0
+        return obs.float()
+
+    elif isinstance(observation_space, spaces.Discrete):
+        # One hot encoding and convert to float to avoid errors
+        return F.one_hot(obs.long(), num_classes=observation_space.n).float()
+
+    elif isinstance(observation_space, spaces.MultiDiscrete):
+        # Tensor concatenation of one hot encodings of each Categorical sub-space
+        return th.cat(
+            [
+                F.one_hot(obs_.long(), num_classes=int(observation_space.nvec[idx])).float()
+                for idx, obs_ in enumerate(th.split(obs.long(), 1, dim=1))
+            ],
+            dim=-1,
+        ).view(obs.shape[0], sum(observation_space.nvec))
+
+    elif isinstance(observation_space, spaces.MultiBinary):
+        return obs.float()
+
+    elif isinstance(observation_space, spaces.Dict):
+        # Do not modify by reference the original observation
+        preprocessed_obs = {}
+        for key, _obs in obs.items():
+            preprocessed_obs[key] = preprocess_obs(_obs, observation_space[key], normalize_images=normalize_images)
+        return preprocessed_obs
+
+    else:
+        raise NotImplementedError(f"Preprocessing not implemented for {observation_space}")
+ ```
+There we have it, the default preprocessing layer of Stable Baselines 3. How cool !
+You can see that for Dict observation spaces like we have, it simply iterates through all the obseravtion sub-spaces. For each it just checks wheteher it's an image or not... which is done this way:
+
+```python
+def is_image_space(
+    observation_space: spaces.Space,
+    check_channels: bool = False,
+) -> bool:
+    """
+    Check if a observation space has the shape, limits and dtype
+    of a valid image.
+    The check is conservative, so that it returns False if there is a doubt.
+
+    Valid images: RGB, RGBD, GrayScale with values in [0, 255]
+
+    :param observation_space:
+    :param check_channels: Whether to do or not the check for the number of channels.
+        e.g., with frame-stacking, the observation space may have more channels than expected.
+    :return:
+    """
+    if isinstance(observation_space, spaces.Box) and len(observation_space.shape) == 3:
+        # Check the type
+        if observation_space.dtype != np.uint8:
+            return False
+
+        # Check the value range
+        if np.any(observation_space.low != 0) or np.any(observation_space.high != 255):
+            return False
+
+        # Skip channels check
+        if not check_channels:
+            return True
+        # Check the number of channels
+        if is_image_space_channels_first(observation_space):
+            n_channels = observation_space.shape[0]
+        else:
+            n_channels = observation_space.shape[-1]
+        # RGB, RGBD, GrayScale
+        return n_channels in [1, 3, 4]
+    return False
+   ```
+   It is simply a check of the lowest and highest value, along with a dimension check. My initiative is to rewrite these parts, to include the lidar data type and make sure on no account it will ever be lumped with an image. To do that, <code>jamys_toolkit</code> overwrites the <code>extract_features</code> method of the <code>BaseModel</code>. By doing so, the original code is not modified and everything works fine. The trick is simply to redefine <code>preprocess_obs</code>.
+ 
  ### Off policy and replay buffer
  SAC is an off policy RL algorithm. It basically means that all trajectories recorded since the beginning of the learning can be used for every training step. It is tremendously important, because trajectories take a precious time to be recorded in our case, therefore remaking an entire database of trajectories for each policy iteration is not efficient nor feasible ... 
  
