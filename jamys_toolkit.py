@@ -7,7 +7,313 @@ Created on Wed Mar 16 08:50:14 2022
 
 import numpy as np
 import random
+import gym
+import torch as th
+from torch import nn
 
+from typing import Any, Dict, List, Optional, Tuple, Type, Union
+
+from stable_baselines3.common.type_aliases import Schedule
+from stable_baselines3.sac.policies import  SACPolicy
+from stable_baselines3.common.preprocessing import get_flattened_obs_dim, is_image_space
+from stable_baselines3.common.type_aliases import TensorDict
+from stable_baselines3.common.policies import BaseModel
+from stable_baselines3.common.torch_layers import (
+    BaseFeaturesExtractor,
+    CombinedExtractor,
+    FlattenExtractor,
+    NatureCNN,
+    create_mlp,
+    get_actor_critic_arch,
+)
+
+
+
+from gym import spaces
+from torch.nn import functional as F
+
+######### Policy stuff #########################################################
+def preprocess_lidar_tensor(obs: th.Tensor):
+    '''
+    Preprocess specifically lidar data OF THE FORMAT [THETA, R]
+
+    Parameters
+    ----------
+    obs : th.Tensor
+        DESCRIPTION.
+
+    Returns
+    -------
+    None.
+
+    '''
+
+
+def preprocess_obs(
+    obs: th.Tensor,
+    observation_space: spaces.Space,
+    normalize_images: bool = True,
+) -> Union[th.Tensor, Dict[str, th.Tensor]]:
+    """
+    Preprocess observation to be fed to a neural network.
+    For images, it normalizes the values by dividing them by 255 (to have values in [0, 1])
+    For discrete observations, it create a one hot vector. Lidar data are treated by convolution
+
+    :param obs: Observation
+    :param observation_space:
+    :param normalize_images: Whether to normalize images or not
+        (True by default)
+    :return:
+    """
+    if isinstance(observation_space, spaces.Box):
+        if is_image_space(observation_space) and normalize_images:
+            return obs.float() / 255.0
+        return obs.float()
+    
+
+
+    elif isinstance(observation_space, spaces.Discrete):
+        # One hot encoding and convert to float to avoid errors
+        return F.one_hot(obs.long(), num_classes=observation_space.n).float()
+
+    elif isinstance(observation_space, spaces.MultiDiscrete):
+        # Tensor concatenation of one hot encodings of each Categorical sub-space
+        return th.cat(
+            [
+                F.one_hot(obs_.long(), num_classes=int(observation_space.nvec[idx])).float()
+                for idx, obs_ in enumerate(th.split(obs.long(), 1, dim=1))
+            ],
+            dim=-1,
+        ).view(obs.shape[0], sum(observation_space.nvec))
+
+    elif isinstance(observation_space, spaces.MultiBinary):
+        return obs.float()
+
+    elif isinstance(observation_space, spaces.Dict):
+        # Do not modify by reference the original observation
+        preprocessed_obs = {}
+        for key, _obs in obs.items():
+            preprocessed_obs[key] = preprocess_obs(_obs, observation_space[key], normalize_images=normalize_images)
+        return preprocessed_obs
+
+    else:
+        raise NotImplementedError(f"Preprocessing not implemented for {observation_space}")
+        
+        
+def extract_features(self, obs: th.Tensor) -> th.Tensor:
+    """
+    Preprocess the observation if needed and extract features.
+
+    :param obs:
+    :return:
+    """
+    assert self.features_extractor is not None, "No features extractor was set"
+    preprocessed_obs = preprocess_obs(obs, self.observation_space, normalize_images=self.normalize_images)
+    return self.features_extractor(preprocessed_obs)
+
+# Overwritting the extract feature method because we will use a custom a different 
+# preprocessing, normalizing lidar data.
+
+BaseModel.extract_features = extract_features 
+
+
+
+class Jamys_CustomFeaturesExtractor(BaseFeaturesExtractor):
+    """
+    A Custom Feature Extractor working with Dict observation Spaces. Images are
+    treated like others featur extractors would : 3 convolutions layers. Lidar
+    data are passed through multiple layers of convolutions, and other types
+    of input are simply passed through a fltten layer. At the end, all features
+    are concatenated together
+
+    :param observation_space:
+    :param Lidar_data_label: List of the observations name of lidar data
+    :param lidar_output_dim: Number of features to output from each CNN submodule(s) dedicated to Lidar. Defaults to
+        100 to avoid exploding network sizes.
+    :param cnn_output_dim: Number of features to output from each CNN submodule(s). Defaults to
+        256 to avoid exploding network sizes.
+    """
+
+    def __init__(self, observation_space: gym.spaces.Dict,Lidar_data_label=[], lidar_output_dim: int = 100, cnn_output_dim: int = 256):
+        # TODO we do not know features-dim here before going over all the items, so put something there. This is dirty!
+        # I dunno man, I think I can live with that for now ...
+        super(Jamys_CustomFeaturesExtractor, self).__init__(observation_space, features_dim=1)
+
+        extractors = {}
+        Lidar_extractor = None #init, all Lidar channels will share the same NN
+        def create_Lidar_extractor(subspace, lidar_output_dim):
+            Lidar_extractor = LidarCNN(subspace, features_dim = lidar_output_dim, kernel_height=5)
+            return Lidar_extractor
+
+        total_concat_size = 0
+        for key, subspace in observation_space.spaces.items():
+            if is_image_space(subspace):
+                extractors[key] = NatureCNN(subspace, features_dim=cnn_output_dim)
+                total_concat_size += cnn_output_dim
+            elif key in Lidar_data_label :
+                if Lidar_extractor == None:
+                    Lidar_extractor = create_Lidar_extractor(subspace, lidar_output_dim)
+                extractors[key] == Lidar_extractor
+                total_concat_size += lidar_output_dim
+                
+            else:
+                # The observation key is a vector, flatten it if needed
+                extractors[key] = nn.Flatten()
+                total_concat_size += get_flattened_obs_dim(subspace)
+
+        self.extractors = nn.ModuleDict(extractors)
+
+        # Update the features dim manually
+        self._features_dim = total_concat_size
+
+    def forward(self, observations: TensorDict) -> th.Tensor:
+        encoded_tensor_list = []
+
+        for key, extractor in self.extractors.items():
+            encoded_tensor_list.append(extractor(observations[key]))
+        return th.cat(encoded_tensor_list, dim=1)
+    
+    
+class Jamys_CustomPolicy(SACPolicy):
+    """
+    Policy class (with both actor and critic) for SAC.
+
+    :param observation_space: Observation space
+    :param action_space: Action space
+    :param lr_schedule: Learning rate schedule (could be constant)
+    :param net_arch: The specification of the policy and value networks.
+    :param activation_fn: Activation function
+    :param use_sde: Whether to use State Dependent Exploration or not
+    :param log_std_init: Initial value for the log standard deviation
+    :param sde_net_arch: Network architecture for extracting features
+        when using gSDE. If None, the latent features from the policy will be used.
+        Pass an empty list to use the states as features.
+    :param use_expln: Use ``expln()`` function instead of ``exp()`` when using gSDE to ensure
+        a positive standard deviation (cf paper). It allows to keep variance
+        above zero and prevent it from growing too fast. In practice, ``exp()`` is usually enough.
+    :param clip_mean: Clip the mean output when using gSDE to avoid numerical instability.
+    :param features_extractor_class: Features extractor to use.
+    :param normalize_images: Whether to normalize images or not,
+         dividing by 255.0 (True by default)
+    :param optimizer_class: The optimizer to use,
+        ``th.optim.Adam`` by default
+    :param optimizer_kwargs: Additional keyword arguments,
+        excluding the learning rate, to pass to the optimizer
+    :param n_critics: Number of critic networks to create.
+    :param share_features_extractor: Whether to share or not the features extractor
+        between the actor and the critic (this saves computation time)
+    """
+
+    def __init__(
+        self,
+        observation_space: gym.spaces.Space,
+        action_space: gym.spaces.Space,
+        lr_schedule: Schedule,
+        net_arch: Optional[Union[List[int], Dict[str, List[int]]]] = None,
+        activation_fn: Type[nn.Module] = nn.ReLU,
+        use_sde: bool = False,
+        log_std_init: float = -3,
+        sde_net_arch: Optional[List[int]] = None,
+        use_expln: bool = False,
+        clip_mean: float = 2.0,
+        features_extractor_class: Type[BaseFeaturesExtractor] = CombinedExtractor,
+        features_extractor_kwargs: Optional[Dict[str, Any]] = None,
+        normalize_images: bool = True,
+        optimizer_class: Type[th.optim.Optimizer] = th.optim.Adam,
+        optimizer_kwargs: Optional[Dict[str, Any]] = None,
+        n_critics: int = 2,
+        share_features_extractor: bool = True,
+    ):
+        super(Jamys_CustomPolicy, self).__init__(
+            observation_space,
+            action_space,
+            lr_schedule,
+            net_arch,
+            activation_fn,
+            use_sde,
+            log_std_init,
+            sde_net_arch,
+            use_expln,
+            clip_mean,
+            features_extractor_class,
+            features_extractor_kwargs,
+            normalize_images,
+            optimizer_class,
+            optimizer_kwargs,
+            n_critics,
+            share_features_extractor,
+        )
+        
+     
+class LidarCNN(BaseFeaturesExtractor): #TODO
+    """
+
+
+    :param observation_space:
+    :param features_dim: Number of features extracted.
+        This corresponds to the number of unit for the last layer.
+    """
+
+    def __init__(self, observation_space: gym.spaces.Box, features_dim: int = 512, kernel_height = 5):
+        # TODO is normalisation mandatory ?
+        super(LidarCNN, self).__init__(observation_space, features_dim)
+        # We assume On channel, H x 2 X 1 format
+        # Re-ordering will be done by pre-preprocessing or wrapper
+        # assert is_image_space(observation_space, check_channels=False), (
+        #     "You should use NatureCNN "
+        #     f"only with images not with {observation_space}\n"
+        #     "(you are probably using `CnnPolicy` instead of `MlpPolicy` or `MultiInputPolicy`)\n"
+        #     "If you are using a custom environment,\n"
+        #     "please check it using our env checker:\n"
+        #     "https://stable-baselines3.readthedocs.io/en/master/common/env_checker.html"
+        # )
+        n_input_channels = 1
+        self.cnn = nn.Sequential(
+            nn.Conv2d(n_input_channels, 32, kernel_size=(kernel_height, 2), stride=1, padding=0),
+            nn.ReLU(),
+            nn.Flatten(0, 1),
+            nn.Conv2d(1, 4, kernel_size=4, stride=2, padding=0),
+            nn.ReLU(),
+            nn.Conv2d(4, 8, kernel_size=3, stride=1, padding=0),
+            nn.ReLU(),
+            nn.Flatten(),
+        )
+
+        # Compute shape by doing one forward pass
+        with th.no_grad():
+            n_flatten = self.cnn(th.as_tensor(observation_space.sample()[None]).float()).shape[1]
+
+        self.linear = nn.Sequential(nn.Linear(n_flatten, features_dim), nn.ReLU())
+
+    def forward(self, observations: th.Tensor) -> th.Tensor:
+        return self.linear(self.cnn(observations))
+    
+##### Pre-training and teacher demonstration ################################### 
+def pre_train(self, replay_buffer_path, gradient_steps = 1000):
+    '''
+    Pretrains the model based on a pre-recorded replay buffer : a demonstration
+    of a teacher policy for example
+
+    Parameters
+    ----------
+    replay_buffer_path : TYPE string
+        local path of a pre-recorded replay buffer (only DictReplayBuffer type
+        are supported so far, so nothing like HERReplayBuffer are supported )
+
+    Returns
+    -------
+    None.
+
+    '''
+    self.load_replay_buffer(replay_buffer_path)
+    self.replay_buffer.device='cuda' # TODO is it really working ??
+    
+    self._setup_learn(total_timesteps = 10, eval_env=None)
+    print("training the model from teacher's demonstration")
+    self.train(gradient_steps=gradient_steps)
+    print('end of training')
+
+################ Data related ##################################################
 def convert_lidar_data_to_polar(lidar_data):
     """
     
@@ -40,9 +346,10 @@ def convert_lidar_data_to_polar(lidar_data):
     
     return np.column_stack((T,R))
 
+
 def fetch_action(client):
     '''
-    Returns the vehicule command performed by the human user, on an MDP formt
+    Returns the vehicule command performed by the human user, on an MDP format
 
     Parameters
     ----------
@@ -87,6 +394,7 @@ def convert_global_to_relative_position(Ue_spawn_point, Ue_global_point):
     C[2]*=-1
     return C[0], C[1], C[2]
 
+########## Checkpoints and spawn #############################################
 class Checkpoint():
     def __init__(self,x_pos, y_pos, radius, next_checkpoint = None, index=None):
         """
@@ -120,7 +428,7 @@ class Checkpoint():
     
     def radius_check(self, x_player, y_player):
         '''
-        This function return whether or not the player is in the radius of the chekcpoint
+        This function return whether or not the player is in the radius of the checkpoint
 
         Parameters
         ----------

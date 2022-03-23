@@ -7,9 +7,11 @@ Created on Thu Feb 17 15:05:35 2022
 
 import numpy as np
 import airsim
+from tqdm import tqdm
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.buffers import DictReplayBuffer
 from stable_baselines3.common.save_util import save_to_pkl
+from stable_baselines3.common import utils
 import time
 import matplotlib.pyplot as plt
 import cv2
@@ -17,13 +19,16 @@ import random
 
 import sys
 sys.path.append("C:/Users/jamyl/Documents/GitHub/AirSim-GYM-environment")
-from jamys_toolkit import Circuit_wrapper, convert_lidar_data_to_polar, Circuit_spawn, fetch_action
+from jamys_toolkit import Circuit_wrapper, convert_lidar_data_to_polar, Circuit_spawn, fetch_action, pre_train
+
 
 
 import gym
 from gym import spaces
 
 from stable_baselines3 import SAC
+SAC.pre_train = pre_train # Adding my personal touch ;)
+
 
 import sys
 sys.path.append("C:/Users/jamyl/Documents/GitHub/AirSim-GYM-environment/jamys_toolkit.py")
@@ -33,7 +38,7 @@ sys.path.append("C:/Users/jamyl/Documents/GitHub/AirSim-GYM-environment/jamys_to
 class CustomEnv(gym.Env):
     """Custom Environment that follows gym interface"""
 
-    def __init__(self, client, lidar_size, dn,UE_spawn_point, liste_checkpoints_coordinates, liste_spawn_point,is_rendered=False):
+    def __init__(self, client, lidar_size, dt, ClockSpeed,UE_spawn_point, liste_checkpoints_coordinates, liste_spawn_point,is_rendered=False):
         """
         
 
@@ -43,8 +48,10 @@ class CustomEnv(gym.Env):
             AirSim client.
         lidar_size : int
             Number of point observed by the lidar in each observation.
-        dn : float
-            Number of frames during which each simulation step runs.
+        dt : float
+            Simulation time step separating two observations/actions.
+        ClcokSpeed : int
+            ClockSpeed selected in SETTINGS.JSON. Make sure that FPS/ClockSpeed > 30
         is_rendered : Boolean, optional
             Wether or not the lidar map is rendering. The default is False.
 
@@ -68,7 +75,8 @@ class CustomEnv(gym.Env):
         
         
         self.is_rendered=is_rendered
-        self.dn = dn
+        self.dt = dt
+        self.ClockSpeed = ClockSpeed
         self.lidar_size=lidar_size
         
         self.total_reward=0
@@ -135,15 +143,10 @@ class CustomEnv(gym.Env):
         self.client.setCarControls(A)
         
         
-    # Now that everything is good and proper, let's run a few frames of AirSim
-        self.client.simContinueForFrames( self.dn )        
-        
-        
-    # Waiting the simulation step to be over
-        while not self.client.simIsPause():
-            pass
-
-
+    # Now that everything is good and proper, let's run  AirSim a bit
+        self.client.simPause(False)
+        time.sleep(self.dt/self.ClockSpeed) #TODO a dedicated thread may be more efficient
+        self.client.simPause(True)
         
 
     # Get the state from AirSim
@@ -437,10 +440,11 @@ liste_spawn_point.append(spawn10)
 spawn10 = Circuit_spawn(-920, 8040, 400, np.pi/3, 2*np.pi/3,checkpoint_index=3,spawn_point=spawn)
 liste_spawn_point.append(spawn10)
 
+###################################
 
+ClockSpeed = 3
 
-
-airsim_env=CustomEnv(client, dn=10 ,lidar_size=200,
+airsim_env=CustomEnv(client, dt=0.1, ClockSpeed=ClockSpeed ,lidar_size=200,
                      UE_spawn_point=spawn,
                      liste_checkpoints_coordinates = liste_checkpoints_coordonnes,
                      liste_spawn_point = liste_spawn_point)
@@ -448,10 +452,59 @@ airsim_env=CustomEnv(client, dn=10 ,lidar_size=200,
 path = "C:/Users/jamyl/Desktop/DUMP/'filename_pi.obj'"
 
 
+# Testing the model after learning
+
+model = SAC.load("P:/Training_V1/504400",tensorboard_log="P:/Training_V1")
+obs = airsim_env.reset()
+while True:
+    action, _states = model.predict(obs, deterministic=True)
+    obs, reward, done, info = airsim_env.step(action)
+    if done:
+      obs = airsim_env.reset()
+
+
+#%% Trainign a model
+models_dir = "C:/Users/jamyl/Desktop/TER_dossier/Training"
+logdir = "C:/Users/jamyl/Desktop/TER_dossier/Training"
 
 
 
-# Loading the replay buffer and training on that
+# policy_kwargs = dict(
+#     features_extractor_class = MultiInputPolicy,
+#     features_extractor_kwargs = dict(features_dim=128))
+
+TIMESTEPS=100
+model = SAC("MultiInputPolicy", airsim_env,
+            verbose=1,tensorboard_log=logdir)
+
+model.predict(observation=airsim_env.reset())
+iters=0
+while(True):
+    iters=iters+1
+    model.learn(total_timesteps=TIMESTEPS, reset_num_timesteps=False, tb_log_name="SAC_Lidar_only_RC")
+    model.save(f"{models_dir}/{TIMESTEPS*iters}")
+    
+
+    
+#%% pretraining the model on prerecorded master trajectories
+
+models_dir = "C:/Users/jamyl/Desktop/TER_dossier/Training"
+logdir = "C:/Users/jamyl/Desktop/TER_dossier/Training"
+
+
+
+TIMESTEPS=100
+model = SAC("MultiInputPolicy", airsim_env, verbose=1,tensorboard_log=logdir)
+
+model.pre_train(replay_buffer_path = path)
+
+
+
+
+
+
+
+#%% Loading the replay buffer and training on that
 models_dir = "C:/Users/jamyl/Desktop/TER_dossier/Training"
 logdir = "C:/Users/jamyl/Desktop/TER_dossier/Training"
 
@@ -510,20 +563,7 @@ save_to_pkl(path, replay_buffer)
 
 
 
-#%% Trainign a model
-models_dir = "C:/Users/jamyl/Desktop/TER_dossier/Training"
-logdir = "C:/Users/jamyl/Desktop/TER_dossier/Training"
 
-TIMESTEPS=100
-model = SAC("MultiInputPolicy", airsim_env, verbose=1,tensorboard_log=logdir)
-iters=0
-while(True):
-    iters=iters+1
-    model.learn(total_timesteps=TIMESTEPS, reset_num_timesteps=False, tb_log_name="SAC_Lidar_only_RC")
-    model.save(f"{models_dir}/{TIMESTEPS*iters}")
-    
-
-    
 #%% Playing on the circuit
 airsim_env.reset()
 airsim_env.close()
@@ -545,16 +585,6 @@ while(True):
         print("finish")
         break
 
-
-#%% Testing the model after learning
-
-model = SAC.load("C:/Users/jamyl/Desktop/TER_dossier/Training/32100",tensorboard_log="C:/Users/jamyl/Documents/GitHub/AirSim-GYM-environment/Training")
-obs = airsim_env.reset()
-while True:
-    action, _states = model.predict(obs, deterministic=True)
-    obs, reward, done, info = airsim_env.step(action)
-    if done:
-      obs = airsim_env.reset()
 
 
     
