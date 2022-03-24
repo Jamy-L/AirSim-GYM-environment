@@ -241,6 +241,63 @@ def is_image_space(
    ```
    It is simply a check of the lowest and highest value, along with a dimension check. My initiative is to rewrite these parts, to include the lidar data type and make sure on no account it will ever be lumped with an image. To do that, <code>jamys_toolkit</code> overwrites the <code>extract_features</code> method of the <code>BaseModel</code>. By doing so, the original code is not modified and everything works fine. The trick is simply to redefine <code>preprocess_obs</code>.
  
+ ### Implementation of my custom preprocessing layer and feature extractor
+ Preprocessing simply consists off a normalisation of the radius and angle. The angle is "simply" divided by 2 times pi, and the radius is noramlized by the function y = -exp(-x) + 1. It is not the only option available of course, and maybe not the best, but I think it makes the job perfectly. You should be aware that so called "in-place operation" must be avoided at all cost inside any layer. In-line operation basically means wrtitting over a variable value, so A[:,:,0]+= 1 is forbidden for example. If you do so, backtracking the gradient will be impossible and the debugger will give you a mysterious message whishing you good luck for debugging 😟... 
+ 
+It can be a bit tricky to reshape and normalize tensors without that, so here is my pre-processing layer :
+```python
+def preprocess_lidar_tensor(obs1: th.Tensor, observation_space: spaces.Space,):
+    '''
+    Preprocess specifically lidar data OF THE FORMAT [[THETA1, R1], ..., [THETA_N, R_N]]
+    it includes normalidation and casting to float
+
+    Parameters
+    ----------
+    obs : th.Tensor
+        Observation of the lidar format. Please make sure that the observation
+        space is a Box type.
+
+    Returns
+    -------
+    preprocessed obs : A normalized tensor
+
+    '''
+    if not isinstance(observation_space, spaces.Box):
+        raise TypeError("The observation space is not a box ....")
+    else :
+        obs = obs1.float()
+        c0 = obs[:,:,0, None]/2*np.pi
+        c1 = - th.exp(-obs[:,:,1, None])+1 #passing from [0, infty[ to [0, 1]
+        normalized = th.cat((c0,c1), dim =2)
+        obs2 = normalized[:,None,:,:] # adding a fourth dimension
+
+        # This reshapes is essential, since the function receives a 3d tensor.
+        # The first dimension receives the batch size. This reshape allow to
+        # keep the batch size on the 0 dimension, then channel on 1, regular
+        # Lidar shape on 2, 3
+        return obs2
+
+```
+
+When it comes to the feature extractor, I have introduced a "Concat layer" which concatenates the differents channels into a single 2D images.
+Once again, you will see that no variable is overwritten.
+
+``` python
+class Concat(nn.Module):
+    def __init__(self, ):
+        super(Concat, self).__init__()
+
+    def forward(self, x):
+        x_new = x.clone()
+        original_shape = x_new.shape
+        batch_size = original_shape[0]
+        channels = original_shape[1]
+        
+        return x_new.reshape(batch_size,1, original_shape[2], channels)
+```
+
+
+ 
  ### Off policy and replay buffer
  SAC is an off policy RL algorithm. It basically means that all trajectories recorded since the beginning of the learning can be used for every training step. It is tremendously important, because trajectories take a precious time to be recorded in our case, therefore remaking an entire database of trajectories for each policy iteration is not efficient nor feasible ... 
  
