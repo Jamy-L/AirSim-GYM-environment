@@ -33,20 +33,53 @@ from gym import spaces
 from torch.nn import functional as F
 
 ######### Policy stuff #########################################################
-def preprocess_lidar_tensor(obs: th.Tensor):
+
+class Concat(nn.Module):
+    def __init__(self, ):
+        super(Concat, self).__init__()
+
+    def forward(self, x):
+        x_new = x.clone()
+        original_shape = x_new.shape
+        batch_size = original_shape[0]
+        channels = original_shape[1]
+        
+        return x_new.reshape(batch_size,1, original_shape[2], channels)
+
+nn.Concat=Concat
+
+
+def preprocess_lidar_tensor(obs1: th.Tensor, observation_space: spaces.Space,):
     '''
-    Preprocess specifically lidar data OF THE FORMAT [THETA, R]
+    Preprocess specifically lidar data OF THE FORMAT [[THETA1, R1], ..., [THETA_N, R_N]]
+    it includes normalidation and casting to float
 
     Parameters
     ----------
     obs : th.Tensor
-        DESCRIPTION.
+        Observation of the lidar format. Please make sure that the observation
+        space is a Box type.
 
     Returns
     -------
-    None.
+    preprocessed obs : A normalized tensor
 
     '''
+    if not isinstance(observation_space, spaces.Box):
+        raise TypeError("The observation space is not a box ....")
+    else :
+        obs = obs1.float()
+        c0 = obs[:,:,0, None]/2*np.pi
+        c1 = - th.exp(-obs[:,:,1, None])+1 #passing from [0, infty[ to [0, 1]
+        normalized = th.cat((c0,c1), dim =2)
+        obs2 = normalized[:,None,:,:] # adding a fourth dimension
+
+        # This reshapes is essential, since the function receives a 3d tensor.
+        # The first dimension receives the batch size. This reshape allow to
+        # keep the batch size on the 0 dimension, then channel on 1, regular
+        # Lidar shape on 2, 3
+        return obs2
+        
 
 
 def preprocess_obs(
@@ -58,6 +91,9 @@ def preprocess_obs(
     Preprocess observation to be fed to a neural network.
     For images, it normalizes the values by dividing them by 255 (to have values in [0, 1])
     For discrete observations, it create a one hot vector. Lidar data are treated by convolution
+    
+    lidar types are recognized from the sub space name of the Dict observation space,
+    containing "lidar" or "Lidar"
 
     :param obs: Observation
     :param observation_space:
@@ -93,7 +129,10 @@ def preprocess_obs(
         # Do not modify by reference the original observation
         preprocessed_obs = {}
         for key, _obs in obs.items():
-            preprocessed_obs[key] = preprocess_obs(_obs, observation_space[key], normalize_images=normalize_images)
+            if ("lidar" in key) or ("Lidar" in key):
+                preprocessed_obs[key] = preprocess_lidar_tensor(_obs, observation_space[key])
+            else:
+                preprocessed_obs[key] = preprocess_obs(_obs, observation_space[key], normalize_images=normalize_images)
         return preprocessed_obs
 
     else:
@@ -123,7 +162,7 @@ class Jamys_CustomFeaturesExtractor(BaseFeaturesExtractor):
     A Custom Feature Extractor working with Dict observation Spaces. Images are
     treated like others featur extractors would : 3 convolutions layers. Lidar
     data are passed through multiple layers of convolutions, and other types
-    of input are simply passed through a fltten layer. At the end, all features
+    of input are simply passed through a flatten layer. At the end, all features
     are concatenated together
 
     :param observation_space:
@@ -136,7 +175,7 @@ class Jamys_CustomFeaturesExtractor(BaseFeaturesExtractor):
 
     def __init__(self, observation_space: gym.spaces.Dict,Lidar_data_label=[], lidar_output_dim: int = 100, cnn_output_dim: int = 256):
         # TODO we do not know features-dim here before going over all the items, so put something there. This is dirty!
-        # I dunno man, I think I can live with that for now ...
+        # -> I dunno man, I think I can live with that for now ...
         super(Jamys_CustomFeaturesExtractor, self).__init__(observation_space, features_dim=1)
 
         extractors = {}
@@ -153,7 +192,7 @@ class Jamys_CustomFeaturesExtractor(BaseFeaturesExtractor):
             elif key in Lidar_data_label :
                 if Lidar_extractor == None:
                     Lidar_extractor = create_Lidar_extractor(subspace, lidar_output_dim)
-                extractors[key] == Lidar_extractor
+                extractors[key] = create_Lidar_extractor(subspace, lidar_output_dim)
                 total_concat_size += lidar_output_dim
                 
             else:
@@ -255,7 +294,6 @@ class LidarCNN(BaseFeaturesExtractor): #TODO
     """
 
     def __init__(self, observation_space: gym.spaces.Box, features_dim: int = 512, kernel_height = 5):
-        # TODO is normalisation mandatory ?
         super(LidarCNN, self).__init__(observation_space, features_dim)
         # We assume On channel, H x 2 X 1 format
         # Re-ordering will be done by pre-preprocessing or wrapper
@@ -270,18 +308,18 @@ class LidarCNN(BaseFeaturesExtractor): #TODO
         n_input_channels = 1
         self.cnn = nn.Sequential(
             nn.Conv2d(n_input_channels, 32, kernel_size=(kernel_height, 2), stride=1, padding=0),
-            nn.ReLU(),
-            nn.Flatten(0, 1),
-            nn.Conv2d(1, 4, kernel_size=4, stride=2, padding=0),
-            nn.ReLU(),
-            nn.Conv2d(4, 8, kernel_size=3, stride=1, padding=0),
-            nn.ReLU(),
+            # nn.Concat(),
+            # nn.ReLU(),
+            # nn.Conv2d(1, 4, kernel_size=4, stride=2, padding=0),
+            # nn.ReLU(),
+            # nn.Conv2d(4, 8, kernel_size=3, stride=1, padding=0),
+            # nn.ReLU(),
             nn.Flatten(),
         )
 
         # Compute shape by doing one forward pass
         with th.no_grad():
-            n_flatten = self.cnn(th.as_tensor(observation_space.sample()[None]).float()).shape[1]
+            n_flatten = self.cnn(th.as_tensor(observation_space.sample()[None, None]).float()).shape[1]
 
         self.linear = nn.Sequential(nn.Linear(n_flatten, features_dim), nn.ReLU())
 
@@ -305,13 +343,14 @@ def pre_train(self, replay_buffer_path, gradient_steps = 1000):
     None.
 
     '''
+    print("Loading the replay buffer from local disk ...")
     self.load_replay_buffer(replay_buffer_path)
     self.replay_buffer.device='cuda' # TODO is it really working ??
-    
+    print("Replay buffer succesfully loaded !\n\n")
     self._setup_learn(total_timesteps = 10, eval_env=None)
-    print("training the model from teacher's demonstration")
+    print("Training the model from teacher's demonstration ...")
     self.train(gradient_steps=gradient_steps)
-    print('end of training')
+    print('Pre-training completed\n\n')
 
 ################ Data related ##################################################
 def convert_lidar_data_to_polar(lidar_data):

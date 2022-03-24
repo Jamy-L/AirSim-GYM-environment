@@ -451,8 +451,34 @@ airsim_env=CustomEnv(client, dt=0.1, ClockSpeed=ClockSpeed ,lidar_size=200,
 
 path = "C:/Users/jamyl/Desktop/DUMP/'filename_pi.obj'"
 
+# Trainign a model
+models_dir = "P:/Training_V2"
+logdir = "P:/Training_V2"
 
-# Testing the model after learning
+from jamys_toolkit import Jamys_CustomFeaturesExtractor
+
+policy_kwargs = dict(
+    features_extractor_class=Jamys_CustomFeaturesExtractor,
+    features_extractor_kwargs=dict(Lidar_data_label=["current_lidar", "prev_lidar"],
+                                    lidar_output_dim=100)
+)
+
+TIMESTEPS=100
+
+model = SAC("MultiInputPolicy", airsim_env,
+            verbose=1,tensorboard_log=logdir,
+            policy_kwargs=policy_kwargs)
+
+model.pre_train(replay_buffer_path = path)
+
+iters=0
+while(True):
+    iters=iters+1
+    model.learn(total_timesteps=TIMESTEPS, reset_num_timesteps=False, tb_log_name="SAC_Lidar_only_RC")
+    model.save(f"{models_dir}/{TIMESTEPS*iters}")
+    
+
+#%% Testing the model after learning
 
 model = SAC.load("P:/Training_V1/504400",tensorboard_log="P:/Training_V1")
 obs = airsim_env.reset()
@@ -463,27 +489,6 @@ while True:
       obs = airsim_env.reset()
 
 
-#%% Trainign a model
-models_dir = "C:/Users/jamyl/Desktop/TER_dossier/Training"
-logdir = "C:/Users/jamyl/Desktop/TER_dossier/Training"
-
-
-
-# policy_kwargs = dict(
-#     features_extractor_class = MultiInputPolicy,
-#     features_extractor_kwargs = dict(features_dim=128))
-
-TIMESTEPS=100
-model = SAC("MultiInputPolicy", airsim_env,
-            verbose=1,tensorboard_log=logdir)
-
-model.predict(observation=airsim_env.reset())
-iters=0
-while(True):
-    iters=iters+1
-    model.learn(total_timesteps=TIMESTEPS, reset_num_timesteps=False, tb_log_name="SAC_Lidar_only_RC")
-    model.save(f"{models_dir}/{TIMESTEPS*iters}")
-    
 
     
 #%% pretraining the model on prerecorded master trajectories
