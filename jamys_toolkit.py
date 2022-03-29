@@ -152,8 +152,8 @@ def extract_features(self, obs: th.Tensor) -> th.Tensor:
 
 # Overwritting the extract feature method because we will use a custom a different 
 # preprocessing, normalizing lidar data.
-
-BaseModel.extract_features = extract_features 
+def use_custom_preprocessor():
+    BaseModel.extract_features = extract_features 
 
 
 
@@ -350,7 +350,8 @@ def pre_train(self, replay_buffer_path, gradient_steps = 1000):
     self._setup_learn(total_timesteps = 10, eval_env=None)
     print("Training the model from teacher's demonstration ...")
     self.train(gradient_steps=gradient_steps)
-    print('Pre-training completed\n\n')
+    print('Pre-training completed, clearing the replay buffer\n\n')
+    self.replay_buffer = None
 
 ################ Data related ##################################################
 def convert_lidar_data_to_polar(lidar_data):
