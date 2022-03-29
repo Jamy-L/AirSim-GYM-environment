@@ -200,12 +200,9 @@ class CustomEnv(gym.Env):
         elif self.car_state.speed <=1: # Lets force the car to move
             reward = -0.1
 
-        # if gate_passed : 
-        #     reward += 50
-        #     print("gate_passed")
-        
-        else :
-            reward = self.car_state.speed
+        if gate_passed : 
+            reward += 50
+            print("gate_passed")
         
         self.total_reward = self.total_reward + reward
 
@@ -355,9 +352,6 @@ class CustomEnv(gym.Env):
         self.close()
         i=0
         for spawn_point in self.liste_spawn_point:
-            if i>40 :
-                print(i)
-
             print("Spawn : " + str(i)+'\n')
             theta_m = spawn_point.theta_min
             theta_M = spawn_point.theta_max            
@@ -421,241 +415,243 @@ liste_checkpoints_coordonnes=[[-10405.0, 4570.0, 10],
                               ]
 
 
-liste_spawn_point=[]
 
-##################### 0 #################
-spawn1= Circuit_spawn(-13650, 4920, 350, -np.pi/4, np.pi/4,checkpoint_index=0,spawn_point=spawn)
-liste_spawn_point.append(spawn1)
-
-spawn2= Circuit_spawn(-13030, 4240, 350, -np.pi/4, np.pi/4,checkpoint_index=0,spawn_point=spawn)
-liste_spawn_point.append(spawn2)
-
-spawn3= Circuit_spawn(-12230, 4710, 350, -np.pi/4, np.pi/4,checkpoint_index=0,spawn_point=spawn)
-liste_spawn_point.append(spawn3)
-
-spawn4= Circuit_spawn(-11800, 4210, 350, -np.pi/8, np.pi/4,checkpoint_index=0,spawn_point=spawn)
-liste_spawn_point.append(spawn4)
-
-spawn5= Circuit_spawn(-11220, 4890, 350, -np.pi/4, np.pi/4,checkpoint_index=0,spawn_point=spawn)
-liste_spawn_point.append(spawn5)
-
-######### 1 ################
-spawn1= Circuit_spawn(-9880, 4890, 350, -np.pi/4, np.pi/4,checkpoint_index=1,spawn_point=spawn)
-liste_spawn_point.append(spawn1)
-
-spawn2= Circuit_spawn(-9720, 4280, 350, -np.pi/4, np.pi/4,checkpoint_index=1,spawn_point=spawn)
-liste_spawn_point.append(spawn2)
-
-spawn3= Circuit_spawn(-9470, 4580, 350, -np.pi/3, np.pi/4,checkpoint_index=1,spawn_point=spawn)
-liste_spawn_point.append(spawn3)
-
-spawn4= Circuit_spawn(-9130, 3720, 350, -np.pi/2-np.pi/4, -np.pi/2+np.pi/4,checkpoint_index=1,spawn_point=spawn)
-liste_spawn_point.append(spawn4)
-
-spawn5= Circuit_spawn(-8740, 3720, 350, -np.pi/2-np.pi/4, -np.pi/2+np.pi/4,checkpoint_index=1,spawn_point=spawn)
-liste_spawn_point.append(spawn5)
-
-######### 2 ################
-spawn1= Circuit_spawn(-9130, 2470, 350, -np.pi/2-np.pi/4, -np.pi/2+np.pi/4,checkpoint_index=2,spawn_point=spawn)
-liste_spawn_point.append(spawn1)
-
-spawn2= Circuit_spawn(-8550, 2470, 350, -np.pi/2-np.pi/4, -np.pi/2+np.pi/4,checkpoint_index=2,spawn_point=spawn)
-liste_spawn_point.append(spawn2)
-
-spawn3= Circuit_spawn(-8550, 1650, 350, -np.pi/2-np.pi/3, -np.pi/2,checkpoint_index=2,spawn_point=spawn)
-liste_spawn_point.append(spawn3)
-
-######### 3 ################
-spawn1= Circuit_spawn(-10430, 1650, 350, -np.pi, -np.pi+np.pi/2,checkpoint_index=3,spawn_point=spawn)
-liste_spawn_point.append(spawn1)
-
-spawn2= Circuit_spawn(-10380, 930, 350, -np.pi+np.pi/6, -np.pi+np.pi/2,checkpoint_index=3,spawn_point=spawn)
-liste_spawn_point.append(spawn2)
-
-spawn3= Circuit_spawn(-11080, 910, 350, -np.pi/2-np.pi/4, -np.pi/2+np.pi/4,checkpoint_index=3,spawn_point=spawn)
-liste_spawn_point.append(spawn3)
-
-spawn4= Circuit_spawn(-10540, 130, 350, -np.pi/2+np.pi/6, -np.pi/2+np.pi/2,checkpoint_index=3,spawn_point=spawn)
-liste_spawn_point.append(spawn4)
-
-spawn5= Circuit_spawn(-11120, -500, 350, -np.pi/6, np.pi/6,checkpoint_index=3,spawn_point=spawn)
-liste_spawn_point.append(spawn5)
-
-spawn6= Circuit_spawn(-10390, -630, 350, -np.pi/6, np.pi/4,checkpoint_index=3,spawn_point=spawn)
-liste_spawn_point.append(spawn6)
-
-######### 4 ################
-spawn1= Circuit_spawn(-9170, -80, 350, -np.pi/4, np.pi/4,checkpoint_index=4,spawn_point=spawn)
-liste_spawn_point.append(spawn1)
-
-spawn2= Circuit_spawn(-8590, -560, 350, -np.pi/4, np.pi/4,checkpoint_index=4,spawn_point=spawn)
-liste_spawn_point.append(spawn2)
-
-spawn3= Circuit_spawn(-8020, 10, 350, -np.pi/4, np.pi/6,checkpoint_index=4,spawn_point=spawn)
-liste_spawn_point.append(spawn3)
-
-spawn4= Circuit_spawn(-7790, -640, 350, -np.pi/6, np.pi/4,checkpoint_index=4,spawn_point=spawn)
-liste_spawn_point.append(spawn4)
-
-spawn5= Circuit_spawn(-7100, -840, 350, -np.pi/2, -np.pi/2+np.pi/4,checkpoint_index=4,spawn_point=spawn)
-liste_spawn_point.append(spawn5)
-
-spawn6= Circuit_spawn(-6430, -1450, 350, -np.pi/2-np.pi/3, -np.pi/2,checkpoint_index=4,spawn_point=spawn)
-liste_spawn_point.append(spawn6)
-
-spawn7= Circuit_spawn(-7170, -1680, 350, -np.pi/2-np.pi/3, -np.pi/2-np.pi/6,checkpoint_index=4,spawn_point=spawn)
-liste_spawn_point.append(spawn7)
-
-spawn8= Circuit_spawn(-6820, -2350, 350, -np.pi-np.pi/4, -np.pi,checkpoint_index=4,spawn_point=spawn)
-liste_spawn_point.append(spawn8)
-
-######### 5 ################
-spawn1= Circuit_spawn(-8540, -1800, 350, -np.pi-np.pi/4, -np.pi+np.pi/4,checkpoint_index=5,spawn_point=spawn)
-liste_spawn_point.append(spawn1)
-
-spawn2= Circuit_spawn(-8580, -2440, 350, -np.pi-np.pi/4, -np.pi+np.pi/4,checkpoint_index=5,spawn_point=spawn)
-liste_spawn_point.append(spawn2)
-
-spawn3= Circuit_spawn(-9150, -1960, 350, -np.pi-np.pi/4, -np.pi+np.pi/4,checkpoint_index=5,spawn_point=spawn)
-liste_spawn_point.append(spawn3)
-
-spawn4= Circuit_spawn(-9780, -2410, 350, -np.pi-np.pi/4, -np.pi+np.pi/4,checkpoint_index=5,spawn_point=spawn)
-liste_spawn_point.append(spawn4)
-
-spawn5= Circuit_spawn(-10290, -1800, 350, -np.pi-np.pi/4, -np.pi+np.pi/4,checkpoint_index=5,spawn_point=spawn)
-liste_spawn_point.append(spawn5)
-
-spawn6= Circuit_spawn(-10880, -2340, 350, -np.pi-np.pi/4, -np.pi+np.pi/4,checkpoint_index=5,spawn_point=spawn)
-liste_spawn_point.append(spawn6)
-
-######### 6 ################
-spawn1= Circuit_spawn(-12200, -2500, 350, -np.pi+np.pi/4, -np.pi+np.pi/3,checkpoint_index=6,spawn_point=spawn)
-liste_spawn_point.append(spawn1)
-
-spawn2= Circuit_spawn(-12540, -1860, 350, -np.pi+np.pi/4, -np.pi+np.pi/2,checkpoint_index=6,spawn_point=spawn)
-liste_spawn_point.append(spawn2)
-
-spawn3= Circuit_spawn(-13020, -3150, 350, -np.pi+np.pi/2, -np.pi-np.pi/3,checkpoint_index=6,spawn_point=spawn)
-liste_spawn_point.append(spawn3)
-
-######### 7 ################
-spawn1= Circuit_spawn(-11410, -3780, 350, -np.pi/2-np.pi/4, -np.pi/2+np.pi/6,checkpoint_index=7,spawn_point=spawn)
-liste_spawn_point.append(spawn1)
-
-spawn2= Circuit_spawn(-11790, -4880, 350, -np.pi/2-np.pi/6, -np.pi/2+np.pi/4,checkpoint_index=7,spawn_point=spawn)
-liste_spawn_point.append(spawn2)
-
-spawn3= Circuit_spawn(-11240, -5410, 350, -np.pi/2-np.pi/4, -np.pi/2,checkpoint_index=7,spawn_point=spawn)
-liste_spawn_point.append(spawn3)
-
-spawn4= Circuit_spawn(-11920, -5950, 350, -np.pi/2, -np.pi/2+np.pi/6,checkpoint_index=7,spawn_point=spawn)
-liste_spawn_point.append(spawn4)
-
-spawn5= Circuit_spawn(-11210, -6270, 350, -np.pi/2-np.pi/4, -np.pi/2,checkpoint_index=7,spawn_point=spawn)
-liste_spawn_point.append(spawn5)
-
-spawn6= Circuit_spawn(-11680, -6750, 350, -np.pi-np.pi/6, -np.pi+np.pi/4,checkpoint_index=7,spawn_point=spawn)
-liste_spawn_point.append(spawn6)
-
-######### 8 ################
-spawn1= Circuit_spawn(-13450, -7210, 350, -np.pi-np.pi/4, -np.pi+np.pi/6,checkpoint_index=8,spawn_point=spawn)
-liste_spawn_point.append(spawn1)
-
-spawn2= Circuit_spawn(-13890, -6680, 350, -np.pi-np.pi/6, -np.pi+np.pi/4,checkpoint_index=8,spawn_point=spawn)
-liste_spawn_point.append(spawn2)
-
-spawn3= Circuit_spawn(-14650, -7100, 350, -np.pi-np.pi/4, -np.pi+np.pi/4,checkpoint_index=8,spawn_point=spawn)
-liste_spawn_point.append(spawn3)
-
-spawn4= Circuit_spawn(-15070, -6640, 350, -3*np.pi/2, -3*np.pi/2+np.pi/4,checkpoint_index=8,spawn_point=spawn)
-liste_spawn_point.append(spawn4)
-
-######### 9 ################
-spawn1= Circuit_spawn(-15680, -5030, 350, -3*np.pi/2-np.pi/4, -3*np.pi/2+np.pi/6,checkpoint_index=9,spawn_point=spawn)
-liste_spawn_point.append(spawn1)
-
-spawn2= Circuit_spawn(-15150, -4810, 350, -3*np.pi/2-np.pi/4, -3*np.pi/2+np.pi/4,checkpoint_index=9,spawn_point=spawn)
-liste_spawn_point.append(spawn2)
-
-spawn3= Circuit_spawn(-15500, -4210, 350, -3*np.pi/2+np.pi/6, -3*np.pi/2+np.pi/4,checkpoint_index=9,spawn_point=spawn)
-liste_spawn_point.append(spawn3)
-
-spawn4= Circuit_spawn(-16020, -3570, 350, -np.pi-np.pi/4, -np.pi+np.pi/6,checkpoint_index=9,spawn_point=spawn)
-liste_spawn_point.append(spawn4)
-
-spawn5= Circuit_spawn(-16800, -3140, 350,  -np.pi, -np.pi+np.pi/2,checkpoint_index=9,spawn_point=spawn)
-liste_spawn_point.append(spawn5)
-
-######### 10 ################
-spawn1= Circuit_spawn(-16940, -4550, 350, -np.pi, -np.pi/2,checkpoint_index=10,spawn_point=spawn)
-liste_spawn_point.append(spawn1)
-
-spawn2= Circuit_spawn(-17150, -5150, 350, -np.pi, -np.pi-np.pi/4,checkpoint_index=10,spawn_point=spawn)
-liste_spawn_point.append(spawn2)
-
-spawn3= Circuit_spawn(-17640, -4790, 350, -np.pi+np.pi/4, -np.pi-np.pi/4,checkpoint_index=10,spawn_point=spawn)
-liste_spawn_point.append(spawn3)
-
-spawn4= Circuit_spawn(-18450, -4880, 350, -np.pi-np.pi/2, -np.pi-np.pi/4,checkpoint_index=10,spawn_point=spawn)
-liste_spawn_point.append(spawn4)
-
-spawn5= Circuit_spawn(-19050, -4420, 350, -3*np.pi/2-np.pi/4, -3*np.pi/2+np.pi/4,checkpoint_index=10,spawn_point=spawn)
-liste_spawn_point.append(spawn5)
-
-
-######### 11 ################
-spawn1= Circuit_spawn(-19260, -2900, 350, -3*np.pi/2-np.pi/4, -3*np.pi/2,checkpoint_index=11,spawn_point=spawn)
-liste_spawn_point.append(spawn1)
-
-spawn2= Circuit_spawn(-18690, -2750, 350, -3*np.pi/2-np.pi/4, -3*np.pi/2 + np.pi/4,checkpoint_index=11,spawn_point=spawn)
-liste_spawn_point.append(spawn2)
-
-spawn3= Circuit_spawn(-19090, -2170, 350, -3*np.pi/2-np.pi/4, -3*np.pi/2+ np.pi/4,checkpoint_index=11,spawn_point=spawn)
-liste_spawn_point.append(spawn3)
-
-spawn4= Circuit_spawn(-18700, -1670, 350, -3*np.pi/2-np.pi/4, -3*np.pi/2+ np.pi/4,checkpoint_index=11,spawn_point=spawn)
-liste_spawn_point.append(spawn4)
-
-spawn5= Circuit_spawn(-19200, -1240, 350, -3*np.pi/2-np.pi/4, -3*np.pi/2+ np.pi/4,checkpoint_index=11,spawn_point=spawn)
-liste_spawn_point.append(spawn5)
-
-######### 12 ################
-spawn1= Circuit_spawn(-19090, 570, 350, -np.pi/6, np.pi/6,checkpoint_index=12,spawn_point=spawn)
-liste_spawn_point.append(spawn1)
-
-spawn2= Circuit_spawn(-18250, 480, 350, 0, np.pi/3,checkpoint_index=12,spawn_point=spawn)
-liste_spawn_point.append(spawn2)
-
-######### 13 ################
-spawn1= Circuit_spawn(-18060, 2230, 350, -np.pi-np.pi/4, -np.pi+np.pi/6,checkpoint_index=13,spawn_point=spawn)
-liste_spawn_point.append(spawn1)
-
-spawn2= Circuit_spawn(-19040, 2140, 350, -3*np.pi/4-np.pi/4, -3*np.pi/2,checkpoint_index=13,spawn_point=spawn)
-liste_spawn_point.append(spawn2)
-
-######### 14 ################
-spawn1= Circuit_spawn(-19210, 4380, 350, -np.pi/6, np.pi/4,checkpoint_index=14,spawn_point=spawn)
-liste_spawn_point.append(spawn1)
-
-spawn2= Circuit_spawn(-18650, 4820, 350, -np.pi/6, np.pi/4,checkpoint_index=14,spawn_point=spawn)
-liste_spawn_point.append(spawn2)
-
-spawn3= Circuit_spawn(-18200, 4360, 350, -np.pi/6, np.pi/4,checkpoint_index=14,spawn_point=spawn)
-liste_spawn_point.append(spawn3)
-
-######### 15 ################
-spawn1= Circuit_spawn(-16600, 4890, 350, -np.pi/4, np.pi/6,checkpoint_index=14,spawn_point=spawn)
-liste_spawn_point.append(spawn1)
-
-spawn2= Circuit_spawn(-16210, 4270, 350, -np.pi/6, np.pi/4,checkpoint_index=14,spawn_point=spawn)
-liste_spawn_point.append(spawn2)
-
-spawn3= Circuit_spawn(-15780, 4860, 350, -np.pi/4, np.pi/6,checkpoint_index=14,spawn_point=spawn)
-liste_spawn_point.append(spawn3)
-
-spawn4= Circuit_spawn(-15100, 4270, 350, -np.pi/6, np.pi/4,checkpoint_index=14,spawn_point=spawn)
-liste_spawn_point.append(spawn4)
-
+def create_spawn_points(spawn): #Just a way to hide this big part
+    liste_spawn_point=[]
+    ##################### 0 #################
+    spawn1= Circuit_spawn(-13650, 4920, 350, -np.pi/4, np.pi/4,checkpoint_index=0,spawn_point=spawn)
+    liste_spawn_point.append(spawn1)
+    
+    spawn2= Circuit_spawn(-13030, 4240, 350, -np.pi/4, np.pi/4,checkpoint_index=0,spawn_point=spawn)
+    liste_spawn_point.append(spawn2)
+    
+    spawn3= Circuit_spawn(-12230, 4710, 350, -np.pi/4, np.pi/4,checkpoint_index=0,spawn_point=spawn)
+    liste_spawn_point.append(spawn3)
+    
+    spawn4= Circuit_spawn(-11800, 4210, 350, -np.pi/8, np.pi/4,checkpoint_index=0,spawn_point=spawn)
+    liste_spawn_point.append(spawn4)
+    
+    spawn5= Circuit_spawn(-11220, 4890, 350, -np.pi/4, np.pi/4,checkpoint_index=0,spawn_point=spawn)
+    liste_spawn_point.append(spawn5)
+    
+    ######### 1 ################
+    spawn1= Circuit_spawn(-9880, 4890, 350, -np.pi/4, np.pi/4,checkpoint_index=1,spawn_point=spawn)
+    liste_spawn_point.append(spawn1)
+    
+    spawn2= Circuit_spawn(-9720, 4280, 350, -np.pi/4, np.pi/4,checkpoint_index=1,spawn_point=spawn)
+    liste_spawn_point.append(spawn2)
+    
+    spawn3= Circuit_spawn(-9470, 4580, 350, -np.pi/3, np.pi/4,checkpoint_index=1,spawn_point=spawn)
+    liste_spawn_point.append(spawn3)
+    
+    spawn4= Circuit_spawn(-9130, 3720, 350, -np.pi/2-np.pi/4, -np.pi/2+np.pi/4,checkpoint_index=1,spawn_point=spawn)
+    liste_spawn_point.append(spawn4)
+    
+    spawn5= Circuit_spawn(-8740, 3720, 350, -np.pi/2-np.pi/4, -np.pi/2+np.pi/4,checkpoint_index=1,spawn_point=spawn)
+    liste_spawn_point.append(spawn5)
+    
+    ######### 2 ################
+    spawn1= Circuit_spawn(-9130, 2470, 350, -np.pi/2-np.pi/4, -np.pi/2+np.pi/4,checkpoint_index=2,spawn_point=spawn)
+    liste_spawn_point.append(spawn1)
+    
+    spawn2= Circuit_spawn(-8550, 2470, 350, -np.pi/2-np.pi/4, -np.pi/2+np.pi/4,checkpoint_index=2,spawn_point=spawn)
+    liste_spawn_point.append(spawn2)
+    
+    spawn3= Circuit_spawn(-8550, 1650, 350, -np.pi/2-np.pi/3, -np.pi/2,checkpoint_index=2,spawn_point=spawn)
+    liste_spawn_point.append(spawn3)
+    
+    ######### 3 ################
+    spawn1= Circuit_spawn(-10430, 1650, 350, -np.pi, -np.pi+np.pi/2,checkpoint_index=3,spawn_point=spawn)
+    liste_spawn_point.append(spawn1)
+    
+    spawn2= Circuit_spawn(-10380, 930, 350, -np.pi+np.pi/6, -np.pi+np.pi/2,checkpoint_index=3,spawn_point=spawn)
+    liste_spawn_point.append(spawn2)
+    
+    spawn3= Circuit_spawn(-11080, 910, 350, -np.pi/2-np.pi/4, -np.pi/2+np.pi/4,checkpoint_index=3,spawn_point=spawn)
+    liste_spawn_point.append(spawn3)
+    
+    spawn4= Circuit_spawn(-10540, 130, 350, -np.pi/2+np.pi/6, -np.pi/2+np.pi/2,checkpoint_index=3,spawn_point=spawn)
+    liste_spawn_point.append(spawn4)
+    
+    spawn5= Circuit_spawn(-11120, -500, 350, -np.pi/6, np.pi/6,checkpoint_index=3,spawn_point=spawn)
+    liste_spawn_point.append(spawn5)
+    
+    spawn6= Circuit_spawn(-10390, -630, 350, -np.pi/6, np.pi/4,checkpoint_index=3,spawn_point=spawn)
+    liste_spawn_point.append(spawn6)
+    
+    ######### 4 ################
+    spawn1= Circuit_spawn(-9170, -80, 350, -np.pi/4, np.pi/4,checkpoint_index=4,spawn_point=spawn)
+    liste_spawn_point.append(spawn1)
+    
+    spawn2= Circuit_spawn(-8590, -560, 350, -np.pi/4, np.pi/4,checkpoint_index=4,spawn_point=spawn)
+    liste_spawn_point.append(spawn2)
+    
+    spawn3= Circuit_spawn(-8020, 10, 350, -np.pi/4, np.pi/6,checkpoint_index=4,spawn_point=spawn)
+    liste_spawn_point.append(spawn3)
+    
+    spawn4= Circuit_spawn(-7790, -640, 350, -np.pi/6, np.pi/4,checkpoint_index=4,spawn_point=spawn)
+    liste_spawn_point.append(spawn4)
+    
+    spawn5= Circuit_spawn(-7100, -840, 350, -np.pi/2, -np.pi/2+np.pi/4,checkpoint_index=4,spawn_point=spawn)
+    liste_spawn_point.append(spawn5)
+    
+    spawn6= Circuit_spawn(-6430, -1450, 350, -np.pi/2-np.pi/3, -np.pi/2,checkpoint_index=4,spawn_point=spawn)
+    liste_spawn_point.append(spawn6)
+    
+    spawn7= Circuit_spawn(-7170, -1680, 350, -np.pi/2-np.pi/3, -np.pi/2-np.pi/6,checkpoint_index=4,spawn_point=spawn)
+    liste_spawn_point.append(spawn7)
+    
+    spawn8= Circuit_spawn(-6820, -2350, 350, -np.pi-np.pi/4, -np.pi,checkpoint_index=4,spawn_point=spawn)
+    liste_spawn_point.append(spawn8)
+    
+    ######### 5 ################
+    spawn1= Circuit_spawn(-8540, -1800, 350, -np.pi-np.pi/4, -np.pi+np.pi/4,checkpoint_index=5,spawn_point=spawn)
+    liste_spawn_point.append(spawn1)
+    
+    spawn2= Circuit_spawn(-8580, -2440, 350, -np.pi-np.pi/4, -np.pi+np.pi/4,checkpoint_index=5,spawn_point=spawn)
+    liste_spawn_point.append(spawn2)
+    
+    spawn3= Circuit_spawn(-9150, -1960, 350, -np.pi-np.pi/4, -np.pi+np.pi/4,checkpoint_index=5,spawn_point=spawn)
+    liste_spawn_point.append(spawn3)
+    
+    spawn4= Circuit_spawn(-9780, -2410, 350, -np.pi-np.pi/4, -np.pi+np.pi/4,checkpoint_index=5,spawn_point=spawn)
+    liste_spawn_point.append(spawn4)
+    
+    spawn5= Circuit_spawn(-10290, -1800, 350, -np.pi-np.pi/4, -np.pi+np.pi/4,checkpoint_index=5,spawn_point=spawn)
+    liste_spawn_point.append(spawn5)
+    
+    spawn6= Circuit_spawn(-10880, -2340, 350, -np.pi-np.pi/4, -np.pi+np.pi/4,checkpoint_index=5,spawn_point=spawn)
+    liste_spawn_point.append(spawn6)
+    
+    ######### 6 ################
+    spawn1= Circuit_spawn(-12200, -2500, 350, -np.pi+np.pi/4, -np.pi+np.pi/3,checkpoint_index=6,spawn_point=spawn)
+    liste_spawn_point.append(spawn1)
+    
+    spawn2= Circuit_spawn(-12540, -1860, 350, -np.pi+np.pi/4, -np.pi+np.pi/2,checkpoint_index=6,spawn_point=spawn)
+    liste_spawn_point.append(spawn2)
+    
+    spawn3= Circuit_spawn(-13020, -3150, 350, -np.pi+np.pi/2, -np.pi-np.pi/3,checkpoint_index=6,spawn_point=spawn)
+    liste_spawn_point.append(spawn3)
+    
+    ######### 7 ################
+    spawn1= Circuit_spawn(-11410, -3780, 350, -np.pi/2-np.pi/4, -np.pi/2+np.pi/6,checkpoint_index=7,spawn_point=spawn)
+    liste_spawn_point.append(spawn1)
+    
+    spawn2= Circuit_spawn(-11790, -4880, 350, -np.pi/2-np.pi/6, -np.pi/2+np.pi/4,checkpoint_index=7,spawn_point=spawn)
+    liste_spawn_point.append(spawn2)
+    
+    spawn3= Circuit_spawn(-11240, -5410, 350, -np.pi/2-np.pi/4, -np.pi/2,checkpoint_index=7,spawn_point=spawn)
+    liste_spawn_point.append(spawn3)
+    
+    spawn4= Circuit_spawn(-11920, -5950, 350, -np.pi/2, -np.pi/2+np.pi/6,checkpoint_index=7,spawn_point=spawn)
+    liste_spawn_point.append(spawn4)
+    
+    spawn5= Circuit_spawn(-11210, -6270, 350, -np.pi/2-np.pi/4, -np.pi/2,checkpoint_index=7,spawn_point=spawn)
+    liste_spawn_point.append(spawn5)
+    
+    spawn6= Circuit_spawn(-11680, -6750, 350, -np.pi-np.pi/6, -np.pi+np.pi/4,checkpoint_index=7,spawn_point=spawn)
+    liste_spawn_point.append(spawn6)
+    
+    ######### 8 ################
+    spawn1= Circuit_spawn(-13450, -7210, 350, -np.pi-np.pi/4, -np.pi+np.pi/6,checkpoint_index=8,spawn_point=spawn)
+    liste_spawn_point.append(spawn1)
+    
+    spawn2= Circuit_spawn(-13890, -6680, 350, -np.pi-np.pi/6, -np.pi+np.pi/4,checkpoint_index=8,spawn_point=spawn)
+    liste_spawn_point.append(spawn2)
+    
+    spawn3= Circuit_spawn(-14650, -7100, 350, -np.pi-np.pi/4, -np.pi+np.pi/4,checkpoint_index=8,spawn_point=spawn)
+    liste_spawn_point.append(spawn3)
+    
+    spawn4= Circuit_spawn(-15070, -6640, 350, -3*np.pi/2, -3*np.pi/2+np.pi/4,checkpoint_index=8,spawn_point=spawn)
+    liste_spawn_point.append(spawn4)
+    
+    ######### 9 ################
+    spawn1= Circuit_spawn(-15680, -5030, 350, -3*np.pi/2-np.pi/4, -3*np.pi/2+np.pi/6,checkpoint_index=9,spawn_point=spawn)
+    liste_spawn_point.append(spawn1)
+    
+    spawn2= Circuit_spawn(-15150, -4810, 350, -3*np.pi/2-np.pi/4, -3*np.pi/2+np.pi/4,checkpoint_index=9,spawn_point=spawn)
+    liste_spawn_point.append(spawn2)
+    
+    spawn3= Circuit_spawn(-15500, -4210, 350, -3*np.pi/2+np.pi/6, -3*np.pi/2+np.pi/4,checkpoint_index=9,spawn_point=spawn)
+    liste_spawn_point.append(spawn3)
+    
+    spawn4= Circuit_spawn(-16020, -3570, 350, -np.pi-np.pi/4, -np.pi+np.pi/6,checkpoint_index=9,spawn_point=spawn)
+    liste_spawn_point.append(spawn4)
+    
+    spawn5= Circuit_spawn(-16800, -3140, 350,  -np.pi, -np.pi+np.pi/2,checkpoint_index=9,spawn_point=spawn)
+    liste_spawn_point.append(spawn5)
+    
+    ######### 10 ################
+    spawn1= Circuit_spawn(-16940, -4550, 350, -np.pi, -np.pi/2,checkpoint_index=10,spawn_point=spawn)
+    liste_spawn_point.append(spawn1)
+    
+    spawn2= Circuit_spawn(-17150, -5150, 350, -np.pi, -np.pi-np.pi/4,checkpoint_index=10,spawn_point=spawn)
+    liste_spawn_point.append(spawn2)
+    
+    spawn3= Circuit_spawn(-17640, -4790, 350, -np.pi+np.pi/4, -np.pi-np.pi/4,checkpoint_index=10,spawn_point=spawn)
+    liste_spawn_point.append(spawn3)
+    
+    spawn4= Circuit_spawn(-18450, -4880, 350, -np.pi-np.pi/2, -np.pi-np.pi/4,checkpoint_index=10,spawn_point=spawn)
+    liste_spawn_point.append(spawn4)
+    
+    spawn5= Circuit_spawn(-19050, -4420, 350, -3*np.pi/2-np.pi/4, -3*np.pi/2+np.pi/4,checkpoint_index=10,spawn_point=spawn)
+    liste_spawn_point.append(spawn5)
+    
+    
+    ######### 11 ################
+    spawn1= Circuit_spawn(-19260, -2900, 350, -3*np.pi/2-np.pi/4, -3*np.pi/2,checkpoint_index=11,spawn_point=spawn)
+    liste_spawn_point.append(spawn1)
+    
+    spawn2= Circuit_spawn(-18690, -2750, 350, -3*np.pi/2-np.pi/4, -3*np.pi/2 + np.pi/4,checkpoint_index=11,spawn_point=spawn)
+    liste_spawn_point.append(spawn2)
+    
+    spawn3= Circuit_spawn(-19090, -2170, 350, -3*np.pi/2-np.pi/4, -3*np.pi/2+ np.pi/4,checkpoint_index=11,spawn_point=spawn)
+    liste_spawn_point.append(spawn3)
+    
+    spawn4= Circuit_spawn(-18700, -1670, 350, -3*np.pi/2-np.pi/4, -3*np.pi/2+ np.pi/4,checkpoint_index=11,spawn_point=spawn)
+    liste_spawn_point.append(spawn4)
+    
+    spawn5= Circuit_spawn(-19200, -1240, 350, -3*np.pi/2-np.pi/4, -3*np.pi/2+ np.pi/4,checkpoint_index=11,spawn_point=spawn)
+    liste_spawn_point.append(spawn5)
+    
+    ######### 12 ################
+    spawn1= Circuit_spawn(-19090, 570, 350, -np.pi/6, np.pi/6,checkpoint_index=12,spawn_point=spawn)
+    liste_spawn_point.append(spawn1)
+    
+    spawn2= Circuit_spawn(-18250, 480, 350, 0, np.pi/3,checkpoint_index=12,spawn_point=spawn)
+    liste_spawn_point.append(spawn2)
+    
+    ######### 13 ################
+    spawn1= Circuit_spawn(-18060, 2230, 350, -np.pi-np.pi/4, -np.pi+np.pi/6,checkpoint_index=13,spawn_point=spawn)
+    liste_spawn_point.append(spawn1)
+    
+    spawn2= Circuit_spawn(-19040, 2140, 350, -3*np.pi/4-np.pi/4, -3*np.pi/2,checkpoint_index=13,spawn_point=spawn)
+    liste_spawn_point.append(spawn2)
+    
+    ######### 14 ################
+    spawn1= Circuit_spawn(-19210, 4380, 350, -np.pi/6, np.pi/4,checkpoint_index=14,spawn_point=spawn)
+    liste_spawn_point.append(spawn1)
+    
+    spawn2= Circuit_spawn(-18650, 4820, 350, -np.pi/6, np.pi/4,checkpoint_index=14,spawn_point=spawn)
+    liste_spawn_point.append(spawn2)
+    
+    spawn3= Circuit_spawn(-18200, 4360, 350, -np.pi/6, np.pi/4,checkpoint_index=14,spawn_point=spawn)
+    liste_spawn_point.append(spawn3)
+    
+    ######### 15 ################
+    spawn1= Circuit_spawn(-16600, 4890, 350, -np.pi/4, np.pi/6,checkpoint_index=14,spawn_point=spawn)
+    liste_spawn_point.append(spawn1)
+    
+    spawn2= Circuit_spawn(-16210, 4270, 350, -np.pi/6, np.pi/4,checkpoint_index=14,spawn_point=spawn)
+    liste_spawn_point.append(spawn2)
+    
+    spawn3= Circuit_spawn(-15780, 4860, 350, -np.pi/4, np.pi/6,checkpoint_index=14,spawn_point=spawn)
+    liste_spawn_point.append(spawn3)
+    
+    spawn4= Circuit_spawn(-15100, 4270, 350, -np.pi/6, np.pi/4,checkpoint_index=14,spawn_point=spawn)
+    liste_spawn_point.append(spawn4)
+    return liste_spawn_point
+liste_spawn_point = create_spawn_points(spawn)
 
 ClockSpeed = 1
 airsim_env=CustomEnv(client, dt=0.1, ClockSpeed=ClockSpeed ,lidar_size=200,
@@ -663,40 +659,93 @@ airsim_env=CustomEnv(client, dt=0.1, ClockSpeed=ClockSpeed ,lidar_size=200,
                       liste_checkpoints_coordinates = liste_checkpoints_coordonnes,
                       liste_spawn_point = liste_spawn_point)
 
-airsim_env.spawn_points_checker(0.1)
-airsim_env.reset()
-airsim_env.close()
 
-while(True):   
-    airsim_env.client.car_state = airsim_env.client.getCarState()
-    position = airsim_env.client.car_state.kinematics_estimated.position
-    gate, finish = airsim_env.Circuit1.cycle_tick(position.x_val, position.y_val)
-    collision_info = client.simGetCollisionInfo()
-    crash = collision_info.has_collided
-    if crash:
-        print("crash")
-        airsim_env.reset()
-        airsim_env.close()
+
+obs = airsim_env.reset()
+while(True):
+    steer_coeff = 1/20
+    speed_coeff = 1
+
+    while True:
+        dots = np.array(obs['current_lidar'])
+        left_dists = dots[:,:][50 > dots[:,0]]
+        left_dists = left_dists[:,1][left_dists[:,1] > 40]
+        left_dist = np.mean(left_dists)
+        right_dists = dots[:,:][dots[:,0] > 310 ]
+        right_dists = right_dists[:,1][right_dists[:,0] < 320 ]
+        right_dist = np.mean(right_dists)
+        front_dists = np.concatenate((dots[:,1][dots[:,0] < 5],dots[:,1][dots[:,0] > 355]))
+        front_dist = np.mean(front_dists)
         
-    if gate :
-        print("gate_passed")
-    if finish :
-        print("finish")
-        break
-
-
+        
+        if front_dists.size == 0:
+            motor_speed = 0
+        else:
+            motor_speed = speed_coeff*front_dist
+            
+        if right_dists.size == 0:
+            steering = 0.5
+        elif left_dists.size == 0:
+            steering = -0.5
+        else:
+            steering = steer_coeff*(left_dist - right_dist)
+            
+        throttle = motor_speed/10
+        action = np.array([throttle, -steering])
+        obs, reward, done, info = airsim_env.step(action)
+    
+        if done :
+            airsim_env.reset()
+        
+        
+        
+        
 
     
-#%%
-model = SAC.load("P:/Training/Training_V1/504400",tensorboard_log="P:/Training_V1", env=airsim_env)
+
+
+#%%#########
+def find_radius(angle, lidar):
+    boolean1 = lidar[:,0] >= angle
+    boolean2 = np.roll(boolean1,1)
+    boolean3 = np.logical_xor(boolean1, boolean2)
+    try :
+        index = np.where(boolean3[1:] == True)[0][0]
+        return lidar[index+1, 1]
+    except :
+        return None
+
+
+
 obs = airsim_env.reset()
-models_dir="P:/Test"
-TIMESTEPS = 1000
-iters=0
-while(True):
-    iters=iters+1
-    model.learn(total_timesteps=TIMESTEPS, reset_num_timesteps=False, tb_log_name="Test")
-    model.save(f"{models_dir}/{TIMESTEPS*iters}")
+
+
+
+
+prev_steering = 0
+steering = 0
+while True:
+    right_distance = find_radius(np.pi/4, obs['current_lidar']) 
+    left_distance  = find_radius(-np.pi/4, obs['current_lidar']) 
+    throttle = 0.5
+    if right_distance != None and left_distance != None :
+        prev_steering = steering
+        steering = (right_distance - left_distance)/20
+    else : 
+        steering = prev_steering
+    
+    if steering >=0 :
+        steering = 0.25
+    else:
+        steering =-0.25
+    
+    action = np.array([throttle, steering])
+    obs, reward, done, info = airsim_env.step(action)
+    
+    if done :
+        airsim_env.reset()
+
+
 
 
 
