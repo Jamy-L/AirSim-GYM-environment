@@ -63,8 +63,8 @@ def lidar_real_to_sim(real_type_lidar):
     sim_type_lidar = np.copy(real_type_lidar)
     # reorganising the theta>180 into theta<0
     
-    neg_angles = real_type_lidar[:,0][real_type_lidar>=180]
-    sim_type_lidar[:,0][sim_type_lidar>=180] = 360-neg_angles 
+    neg_angles = real_type_lidar[real_type_lidar[:,0]>=180][:,0]
+    sim_type_lidar[:,0][sim_type_lidar[:,0]>=180] = neg_angles-360 
     
     #degrees to rads
     sim_type_lidar[:,0]*=np.pi/180
@@ -79,6 +79,3 @@ def lidar_real_to_sim(real_type_lidar):
     idx = sim_type_lidar[:,0].argsort()
     sim_type_lidar = sim_type_lidar[idx,:]
     return sim_type_lidar
-    
-    
-    
