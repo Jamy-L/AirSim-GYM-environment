@@ -18,9 +18,9 @@ sys.path.append("C:/Users/jamyl/Documents/GitHub/AirSim-GYM-environment")
 from jamys_toolkit import Circuit_wrapper, convert_lidar_data_to_polar, Circuit_spawn, fetch_action, pre_train, create_spawn_points
 from sim_to_real_library import lidar_sim_to_real
 
-from Airsim_gym_env import BoxAirSimEnv, MultiDiscreteAirSimEnv
+from Airsim_gym_env import BoxAirSimEnv, MultiDiscreteAirSimEnv, DiscreteAirSimEnv
 
-from stable_baselines3 import SAC
+from stable_baselines3 import SAC, PPO, DQN
 SAC.pre_train = pre_train # Adding my personal touch
 
 
@@ -64,30 +64,29 @@ liste_checkpoints_coordonnes=[[-10405.0, 4570.0, 10],
 liste_spawn_point = create_spawn_points(spawn)
 
 ClockSpeed = 4
-airsim_env=MultiDiscreteAirSimEnv(client, dt=0.1, ClockSpeed=ClockSpeed ,lidar_size=200,
+airsim_env=DiscreteAirSimEnv(client, dt=0.1, ClockSpeed=ClockSpeed ,lidar_size=200,
                       UE_spawn_point=spawn,
                       liste_checkpoints_coordinates = liste_checkpoints_coordonnes,
-                      liste_spawn_point = liste_spawn_point)  
+                      liste_spawn_point = liste_spawn_point, random_reverse=True)  
         
 
 
-check_env(airsim_env)
-#%%
-models_dir = "P:/Training/Training_V6"
-logdir = "P:/Training/Training_V6"
+
+models_dir = "P:/Benchmark/Training_V5"
+logdir = "P:/Benchmark/Training_V5"
 
 from jamys_toolkit import Jamys_CustomFeaturesExtractor
 
 
 TIMESTEPS=1000
 
-model = SAC("MultiInputPolicy", airsim_env,
+model = DQN("MultiInputPolicy", airsim_env,
             verbose=1,tensorboard_log=logdir)
 
 iters=0
 while(True):
     iters=iters+1
-    model.learn(total_timesteps=TIMESTEPS, reset_num_timesteps=False, tb_log_name="SAC_Lidar_only_RC")
+    model.learn(total_timesteps=TIMESTEPS, reset_num_timesteps=False, tb_log_name="DQN_random_reverse")
     model.save(f"{models_dir}/{TIMESTEPS*iters}")
     
 
