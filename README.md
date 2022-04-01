@@ -2,11 +2,11 @@
 This set of programs aims to make reinforcement learning on AirSim easier, by providing a GYM custom environment. It is fully compatible with Stable Baselines 3 which I recommend using.
 
 ## Beginning
-Make sure to be familiar with AirSim (https://microsoft.github.io/AirSim/). It requires Unreal Engine 4 and some python modules like open CV. Cuda is also strongly recommended, and you may want to use a beefy GPU with at least 16Go of RAM to be serein.
+Make sure to be familiar with <a href="https://microsoft.github.io/AirSim/" target="_blank">AirSim</a>. It requires Unreal Engine 4 and some python modules like open CV. Cuda is also strongly recommended, and you may want to use a beefy GPU with at least 16Go of RAM to be serein.
 
-You should also check GYM (https://gym.openai.com/) which is a python environment library that basically makes reinforcement learning much easier to program.
+You should also check <a href="https://gym.openai.com/" target="_blank">GYM</a> which is a python environment library that basically makes reinforcement learning much easier to program.
 
-Stable Baselines 3 provides a set of very performants and modulable RL algorithms and is based on PyTorch. Make sure to have a clean install of the latter (https://stable-baselines3.readthedocs.io/en/master/)
+<a href="https://stable-baselines3.readthedocs.io/en/master/" target="_blank">Stable Baselines 3</a> provides a set of very performants and modulable RL algorithms and is based on PyTorch. Make sure to have a clean install of the latter.
 
 ## Presentation
 A GYM environment is basically composed of 3 methods: 
@@ -78,7 +78,7 @@ For respawn points, you can make the same thing and specify a minimum and maxima
  
  # My implementation of reinforcement learning methods to autonomous driving
  
- The AirSim environment uses a continuous action space and a continuous observation space. For clarity, the observations are of type "Multi Input" since lidar data, previous actions, and a picture are fetched every step. The action space is just a 2D vector containing steering and throttle, therefore it is no multi input.
+ The AirSim environment uses a continuous action space and a continuous observation space. For clarity, the observations are of type "Multi Input" since lidar data, previous actions, and a picture are fetched every step. The action space is just a 2D vector containing steering and throttle, therefore it is multi input.
  
  The continuity of the problems narrows the choice of RL algorithms. Furthermore, due to the nature of the environment, observation data will be very scarce, which gives off-policy algorithms a lead against on-policy algorithms.
  
@@ -138,7 +138,7 @@ For respawn points, you can make the same thing and specify a minimum and maxima
  <li> The rest of whatever you are doing, for example feed the actor network with the current estimated state to get a probability distribution over all action</li>
  </ul>
  
- Despite being seemingly a very dull task, preprocessing's play a tremendously important role in the algorithm. In our case, lidar data is a specific type that needs to be preprocessed separately from the rest, because it doesn't look like any sort of image, in the sense that r can vary from 0 to the infinite (There is maximum range reachable by the lidar, but you get the idea), and theta can vary from 0 to 360°. Instead of manually working with scaled and centered observation, the most logical way of doing is to modify the preprocessing layer to recognize and treat Lidar data accordingly.
+ Despite being seemingly a very dull task, preprocessing plays a tremendously important role in the algorithm. In our case, lidar data is a specific type that needs to be preprocessed separately from the rest, because it doesn't look like any sort of image, in the sense that r can vary from 0 to the infinite (There is maximum range reachable by the lidar, but you get the idea), and theta can vary from 0 to 360°. Instead of manually working with scaled and centered observation, the most logical way of doing is to modify the preprocessing layer to recognize and treat Lidar data accordingly.
  
  Check <code>common/policies.py</code>. It includes the <code>BaseModel</code> class, from which the majority of RL algorithms inherit. It has a method called <code> extract_features()</code>? which is called whenever an observation is pushed through the network (if you are lost, I suggest to try a <code>model.predict()</code> with debugger on, to see where it is leading. You will ultimately arrive there).
  
@@ -305,10 +305,19 @@ class Concat(nn.Module):
         return x_new.reshape(batch_size,1, original_shape[2], channels)
 ```
 
+ ### Actor and critic networks
+ 
+ By default, the actor critic consists of 2 layers of 256 nodes. The input shape is given by whater your feature extractor is ... well extracting 🤔. In the case of a mutli input policy, remember that it will just concatenate a flatten version of every observation (if you are not working with images). The output layer has a size of 2: a command for throttle and a command for steering.
+ 
+![Actor_default](https://user-images.githubusercontent.com/46826148/161277050-785feb99-9e28-4499-976c-01abc81c750c.png)
+
+(I used <a href="https://alexlenail.me/NN-SVG/" target="_blank">this cool website</a> for generating this nice image)
+ 
+ The critic network uses by default the exact same architecture (although the actor and the critic networks are of course independent).
 
  
  ### Off policy and replay buffer
- SAC is an off policy RL algorithm. It basically means that all trajectories recorded since the beginning of the learning can be used for every training step. It is tremendously important, because trajectories take a precious time to be recorded in our case, therefore remaking an entire database of trajectories for each policy iteration is not efficient nor feasible ... 
+ SAC is an off policy RL algorithm. It basically means that all the trajectories recorded since the beginning of the learning can be used for every training step. It is tremendously important, because trajectories take a precious time to be recorded in our case, therefore remaking an entire database of trajectories for each policy iteration is not efficient nor feasible, especially for continuous state/action spaces. 
  
  In our case, a replay buffer contains all trajectories informations, namely each observation, state transition and action, along with the matching reward. I want to lay the emphasis on the fact that this guy can quickly become very heavy, especially when working with image observation.
  During each <code>collect_rollout</code>, the trajectories are added to the replay buffer, and during each <code>train</code>, trajectories are randomly sampled from the replay buffer and stochastic gradient descent is done on all networks (we will go further on that point later).
@@ -318,7 +327,7 @@ class Concat(nn.Module):
  ### Pre-training from teacher's demonstration based replay buffer
  What is really nice about the replay buffer is that it is on no account used to evaluate a policy, but rather to learn how to model the environment. My idea on this point is to record the trajectories of a human teacher, to pretrain all the networks. The teacher controls the vehicle with a controller, and drives the car as he normally would, while every action and observations are collected. The network is then trained a first time exclusively on this set of trajectories, which gives (I believe) a good initialisation for the feature extractor networks and the critic network. I am not really sure whether or not pretraining the actor network is a good idea or not, as it seems to overfit to an extent. The learning process is then exactly the same, but starts with a non-empty replay buffer.
  
- This approach has been strongly influenced by Andrew N. G's "Exploration and Apprenticeship Learning in Reinforcement Learning"
+ *This approach has been strongly influenced by Andrew N. G's "Exploration and Apprenticeship Learning in Reinforcement Learning"*
  
  
  
