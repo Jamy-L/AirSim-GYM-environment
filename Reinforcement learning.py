@@ -20,7 +20,7 @@ from sim_to_real_library import lidar_sim_to_real
 
 from Airsim_gym_env import BoxAirSimEnv, MultiDiscreteAirSimEnv, DiscreteAirSimEnv
 
-from stable_baselines3 import SAC, PPO, DQN
+from stable_baselines3 import SAC, PPO, DQN, TD3
 SAC.pre_train = pre_train # Adding my personal touch
 
 
@@ -64,7 +64,7 @@ liste_checkpoints_coordonnes=[[-10405.0, 4570.0, 10],
 liste_spawn_point = create_spawn_points(spawn)
 
 ClockSpeed = 4
-airsim_env=DiscreteAirSimEnv(client, dt=0.1, ClockSpeed=ClockSpeed ,lidar_size=200,
+airsim_env=BoxAirSimEnv(client, dt=0.1, ClockSpeed=ClockSpeed ,lidar_size=200,
                       UE_spawn_point=spawn,
                       liste_checkpoints_coordinates = liste_checkpoints_coordonnes,
                       liste_spawn_point = liste_spawn_point, random_reverse=True)  
@@ -72,21 +72,21 @@ airsim_env=DiscreteAirSimEnv(client, dt=0.1, ClockSpeed=ClockSpeed ,lidar_size=2
 
 
 
-models_dir = "P:/Benchmark/Training_V5"
-logdir = "P:/Benchmark/Training_V5"
+models_dir = "P:/Benchmark/Training_V6"
+logdir = "P:/Benchmark/Training_V6"
 
 from jamys_toolkit import Jamys_CustomFeaturesExtractor
 
 
 TIMESTEPS=1000
 
-model = DQN("MultiInputPolicy", airsim_env,
+model = TD3("MultiInputPolicy", airsim_env,
             verbose=1,tensorboard_log=logdir)
 
 iters=0
 while(True):
     iters=iters+1
-    model.learn(total_timesteps=TIMESTEPS, reset_num_timesteps=False, tb_log_name="DQN_random_reverse")
+    model.learn(total_timesteps=TIMESTEPS, reset_num_timesteps=False, tb_log_name="TD3_random_reverse")
     model.save(f"{models_dir}/{TIMESTEPS*iters}")
     
 

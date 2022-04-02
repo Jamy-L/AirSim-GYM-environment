@@ -72,7 +72,6 @@ class BoxAirSimEnv(gym.Env):
         
         self.total_reward=0
         self.done=False
-        self.step_iterations=0
         
         self.UE_spawn_point = UE_spawn_point
         self.liste_checkpoints_coordonnes = liste_checkpoints_coordinates
@@ -82,15 +81,15 @@ class BoxAirSimEnv(gym.Env):
         
 ########## Below are MDP related objects #############
         
-        self.action_space = gym.spaces.Box(low   = np.array([-1, -0.5], dtype=np.float32),
-                                       high  = np.array([ 1,  0.5], dtype=np.float32),
+        self.action_space = gym.spaces.Box(low   = np.array([0, 0], dtype=np.float32),
+                                       high  = np.array([ 1,  1], dtype=np.float32),
                                        dtype=np.float32
                                        )
         
         # In this order
         # "throttle"
         # "steering"
-        
+        # both actions are normalized in [0,1]
 		 #Example for using image as input (channel-first; channel-last also works):
              
         low =np.zeros((lidar_size,2), dtype=np.float32)
@@ -124,9 +123,9 @@ class BoxAirSimEnv(gym.Env):
         
 ############ The actions are extracted from the "action" argument
         
-
-        self.car_controls.throttle = float(action[0])
-        self.car_controls.steering = float(action[1])
+        denormalized_action = denormalize_action(action)
+        self.car_controls.throttle = float(denormalized_action[0])
+        self.car_controls.steering = float(denormalized_action[1])
         
         if self.reversed_world:
             self.car_controls.steering*= -1
@@ -277,9 +276,11 @@ class BoxAirSimEnv(gym.Env):
         
         
         print("reset")
-
-        self.prev_throttle = np.array([0])
-        self.prev_steering = np.array([0])
+        init_normalized_action = normalize_action(np.array([0, 0]))
+        self.throttle = init_normalized_action[0]
+        self.steering = init_normalized_action[1]
+        self.prev_throttle = init_normalized_action[0]
+        self.prev_steering = init_normalized_action[1]
         
         if self.random_reverse :
             self.reversed_world = random.choice([False, True])
@@ -425,7 +426,6 @@ class MultiDiscreteAirSimEnv(gym.Env):
         
         self.total_reward=0
         self.done=False
-        self.step_iterations=0
         
         self.random_reverse = random_reverse
         self.reversed_world = None
@@ -1084,5 +1084,46 @@ class DiscreteAirSimEnv(gym.Env):
 
 
 
+def denormalize_action(action):
+    '''
+    
 
+    Parameters
+    ----------
+    action : TYPE np.array
+        A normalised action, where both throttle and steering are represented in [0,1]
+
+    Returns
+    -------
+    denormalized_action : np.array
+        An AirSim type action, where throttle is in [-1, 1] and steering in [-0.5, 0.5]
+
+    '''
+    denormalized_action = (action - np.array([0.5, 0.5]) ) * np.array([2,1])
+    return denormalized_action
+                                                                   
+    
+
+def normalize_action(action):
+    '''
+    
+
+    Parameters
+    ----------
+    action : TYPE
+        An AirSim format action, where where throttle is in [-1, 1] and steering in [-0.5, 0.5]
+
+    Returns
+    -------
+    normalize_action : TYPE
+        A normalised action, where both throttle and steering are represented in [0,1]
+
+    '''
+    normalized_action = action * np.array([0.5, 1]) + np.array([0.5, 0.5])
+    return normalized_action
+
+
+    
+    
+    
 
