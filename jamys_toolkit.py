@@ -69,7 +69,7 @@ def preprocess_lidar_tensor(obs1: th.Tensor, observation_space: spaces.Space,):
         raise TypeError("The observation space is not a box ....")
     else :
         obs = obs1.float()
-        c0 = obs[:,:,0, None]/2*np.pi
+        c0 = (obs[:,:,0, None]+np.pi)/2*np.pi
         c1 = - th.exp(-obs[:,:,1, None])+1 #passing from [0, infty[ to [0, 1]
         normalized = th.cat((c0,c1), dim =2)
         obs2 = normalized[:,None,:,:] # adding a fourth dimension
@@ -351,7 +351,7 @@ def pre_train(self, replay_buffer_path, gradient_steps = 1000):
     print("Training the model from teacher's demonstration ...")
     self.train(gradient_steps=gradient_steps)
     print('Pre-training completed, clearing the replay buffer\n\n')
-    self.replay_buffer = None
+    # self.replay_buffer = None
 
 ################ Data related ##################################################
 def convert_lidar_data_to_polar(lidar_data):

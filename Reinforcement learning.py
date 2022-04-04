@@ -18,7 +18,7 @@ sys.path.append("C:/Users/jamyl/Documents/GitHub/AirSim-GYM-environment")
 from jamys_toolkit import Circuit_wrapper, convert_lidar_data_to_polar, Circuit_spawn, fetch_action, pre_train, create_spawn_points
 from sim_to_real_library import lidar_sim_to_real
 
-from Airsim_gym_env import BoxAirSimEnv, MultiDiscreteAirSimEnv, DiscreteAirSimEnv
+from Airsim_gym_env import BoxAirSimEnv, MultiDiscreteAirSimEnv, DiscreteAirSimEnv, normalize_action, BoxAirSimEnv_5_memory
 
 from stable_baselines3 import SAC, PPO, DQN, TD3
 SAC.pre_train = pre_train # Adding my personal touch
@@ -64,29 +64,30 @@ liste_checkpoints_coordonnes=[[-10405.0, 4570.0, 10],
 liste_spawn_point = create_spawn_points(spawn)
 
 ClockSpeed = 4
-airsim_env=BoxAirSimEnv(client, dt=0.1, ClockSpeed=ClockSpeed ,lidar_size=200,
+airsim_env=BoxAirSimEnv_5_memory(client, dt=0.1, ClockSpeed=ClockSpeed ,lidar_size=500,
                       UE_spawn_point=spawn,
                       liste_checkpoints_coordinates = liste_checkpoints_coordonnes,
                       liste_spawn_point = liste_spawn_point, random_reverse=True)  
-        
 
 
 
-models_dir = "P:/Benchmark/Training_V6"
-logdir = "P:/Benchmark/Training_V6"
-
-from jamys_toolkit import Jamys_CustomFeaturesExtractor
+models_dir = "P:/Benchmark/Training_V8"
+logdir = "P:/Benchmark/Training_V8"
+path = "P:/Replay_buffer/Replay_buffer.pkl"
 
 
 TIMESTEPS=1000
 
-model = TD3("MultiInputPolicy", airsim_env,
+model = SAC("MultiInputPolicy", airsim_env,
             verbose=1,tensorboard_log=logdir)
+
+#model = SAC.load("P:/Benchmark/Training_V7/381000",tensorboard_log="P:/Benchmark/Training_V7", env=airsim_env)
+
 
 iters=0
 while(True):
     iters=iters+1
-    model.learn(total_timesteps=TIMESTEPS, reset_num_timesteps=False, tb_log_name="TD3_random_reverse")
+    model.learn(total_timesteps=TIMESTEPS, reset_num_timesteps=False, tb_log_name="SAC_default")
     model.save(f"{models_dir}/{TIMESTEPS*iters}")
     
 
@@ -213,6 +214,50 @@ while(True):
 
 
 #%% gathering teacher data to save in a replay buffer
+# connect to the AirSim simulator
+client = airsim.CarClient()
+client.confirmConnection()
+client.simPause(True)
+client.enableApiControl(True)
+
+spawn = np.array([-13316.896484, 4559.699707, 322.200134])
+
+
+liste_checkpoints_coordonnes=[[-10405.0, 4570.0, 10],
+                              [-8845.0, 3100.0, 10],
+                              [-9785.0, 1420.0, 10],
+                              [-9795.0, -320.0, 10],
+                              [-7885.0, -2060.0, 10],
+                              [-11525.0, -2060.0, 10],
+                              [-12275.0, -3800.0, 10.91],
+                              [-12755.0, -6880.0, 10],
+                              [-15405.0, -5640.0, 10],
+                              [-17145.0, -3900.0, 10],
+                              [-18965.0, -3550.0, 10],
+                              [-18915.0, -270.0, 10],
+                              [-17655.0, 1540.0, 10],
+                              [-18915.0, 3560.0, 10],
+                              [-17355.0, 4580.0, 10],
+                              [-14255.0, 4580.0, 10]
+                              ]
+
+
+
+
+liste_spawn_point = create_spawn_points(spawn)
+
+ClockSpeed = 2
+airsim_env=BoxAirSimEnv(client, dt=0.1, ClockSpeed=ClockSpeed ,lidar_size=200,
+                      UE_spawn_point=spawn,
+                      liste_checkpoints_coordinates = liste_checkpoints_coordonnes,
+                      liste_spawn_point = liste_spawn_point, random_reverse=False)  
+
+
+
+models_dir = "P:/Benchmark/Training_V6"
+logdir = "P:/Benchmark/Training_V6"
+path = "P:/Replay_buffer"
+
 
 playing_time = 300 #in seconds
 
@@ -229,13 +274,13 @@ replay_buffer = DictReplayBuffer(
                     action_space = airsim_env.action_space
                 )
 
-
+airsim_env.close()
 client.simPause(True)
-action = fetch_action(client)
+action = normalize_action(fetch_action(client))
 observation, reward, done, info = airsim_env.step(np.array([0,0]))
 starting_time = time.time()
 while(True): 
-    action = fetch_action(client)
+    action = normalize_action(fetch_action(client))
     future_observation, future_reward, future_done, info = airsim_env.step(np.array([0,0]))
     replay_buffer.add(observation, next_obs = future_observation, action = action,
                       reward = reward, done = done, infos = [info])
@@ -248,8 +293,6 @@ while(True):
 
 print("saving...")
 save_to_pkl(path, replay_buffer)
-
-
 
 
 
