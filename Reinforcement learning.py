@@ -64,15 +64,15 @@ liste_checkpoints_coordonnes=[[-10405.0, 4570.0, 10],
 liste_spawn_point = create_spawn_points(spawn)
 
 ClockSpeed = 4
-airsim_env=BoxAirSimEnv_5_memory(client, dt=0.1, ClockSpeed=ClockSpeed ,lidar_size=500,
+airsim_env=BoxAirSimEnv_5_memory(client, dt=0.1, ClockSpeed=ClockSpeed ,lidar_size=100,
                       UE_spawn_point=spawn,
                       liste_checkpoints_coordinates = liste_checkpoints_coordonnes,
                       liste_spawn_point = liste_spawn_point, random_reverse=True)  
 
 
 
-models_dir = "P:/Benchmark/Training_V8"
-logdir = "P:/Benchmark/Training_V8"
+models_dir = "P:/Benchmark_2/Training_V4"
+logdir = "P:/Benchmark_2/Training_V4"
 path = "P:/Replay_buffer/Replay_buffer.pkl"
 
 

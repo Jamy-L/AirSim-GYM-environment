@@ -48,17 +48,19 @@ def lidar_formater(lidar_data, target_lidar_size, angle_sort=True):
         return np.zeros((target_lidar_size, 2)), True
     
     if n_points_received < target_lidar_size: #not enough points !
-        temp = np.ones((target_lidar_size-n_points_received+1 , 2))*lidar_data[0] #lets copy the first value multiple time
+        temp = np.ones((target_lidar_size-n_points_received , 2))*lidar_data[0] #lets copy the first value multiple time
         adapted_lidar = np.concatenate((lidar_data,temp)) 
         new_lidar_data = adapted_lidar
     else:
         new_lidar_data = lidar_data[:target_lidar_size,0:2]
-        if angle_sort:
-            idx = new_lidar_data[:,0].argsort()
-            new_lidar_data = new_lidar_data[idx,:]
+
+    if angle_sort:
+        idx = new_lidar_data[:,0].argsort()
+        new_lidar_data = new_lidar_data[idx,:]
         
     return new_lidar_data, False
         
+
 
 
 class BoxAirSimEnv(gym.Env):
@@ -150,8 +152,8 @@ class BoxAirSimEnv(gym.Env):
             "current_lidar" : gym.spaces.Box(low=low, high=high, shape=(lidar_size,2), dtype=np.float32), # the format is [angle , radius]
             "prev_lidar"    : gym.spaces.Box(low=low, high=high, shape=(lidar_size,2), dtype=np.float32),
             
-            "prev_throttle": gym.spaces.Box(low=-1  , high=1   , shape=(1,)),
-            "prev_steering": gym.spaces.Box(low=-0.5, high=+0.5, shape=(1,))
+            "prev_throttle": gym.spaces.Box(low=0  , high=1   , shape=(1,)),
+            "prev_steering": gym.spaces.Box(low=0, high=1, shape=(1,))
             })
         
   
@@ -504,15 +506,15 @@ class BoxAirSimEnv_5_memory(gym.Env):
         high[:,1]=np.inf
         
         self.observation_space = gym.spaces.Dict(spaces={
-            "current_lidar" : gym.spaces.Box(low=low, high=high, shape=(lidar_size,2), dtype=np.float32), # the format is [angle , radius]
+            "current_lidar"  : gym.spaces.Box(low=low, high=high, shape=(lidar_size,2), dtype=np.float32), # the format is [angle , radius]
             "prev_lidar1"    : gym.spaces.Box(low=low, high=high, shape=(lidar_size,2), dtype=np.float32),
             "prev_lidar2"    : gym.spaces.Box(low=low, high=high, shape=(lidar_size,2), dtype=np.float32),
             "prev_lidar3"    : gym.spaces.Box(low=low, high=high, shape=(lidar_size,2), dtype=np.float32),
             "prev_lidar4"    : gym.spaces.Box(low=low, high=high, shape=(lidar_size,2), dtype=np.float32),
             "prev_lidar5"    : gym.spaces.Box(low=low, high=high, shape=(lidar_size,2), dtype=np.float32),
             
-            "prev_throttle": gym.spaces.Box(low=-1  , high=1   , shape=(1,)),
-            "prev_steering": gym.spaces.Box(low=-0.5, high=+0.5, shape=(1,))
+            "prev_throttle": gym.spaces.Box(low=0  , high=1   , shape=(1,)),
+            "prev_steering": gym.spaces.Box(low=0, high=1, shape=(1,))
             })
         
   
