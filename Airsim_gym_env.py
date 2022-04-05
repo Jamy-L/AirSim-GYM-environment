@@ -11,16 +11,75 @@ import airsim
 import numpy as np
 import time
 from jamys_toolkit import Circuit_wrapper, convert_lidar_data_to_polar
-import matplotlib.pyplot as plt 
+import matplotlib.pyplot as plt
 import cv2
 import random
 
+
+def sparse_sample(X, sample_size):
+    """Uniform sampling of the X array.
+
+    Sorting x beforehand may be a good idea.
+
+    Parameters
+    ----------
+    X : numpy array
+        Lidar data to which sample uniformally
+    sample_size : int
+         The desired output size
+
+    Returns
+    -------
+    numpy array
+        A smaller version of X
+
+    """
+    N = X.shape[0]
+    if N < sample_size:
+        raise ValueError(
+            """"The lidar to sample is smaller than the wanted sample_size
+            (size {} against target size {}). Maybe you should use
+            array_augmentation() instad""". format(N, sample_size))
+
+    Indexes = np.linspace(0, N-1, sample_size)
+    return X[Indexes.astype(np.int32)]
+
+
+def array_augmentation(A, final_size):
+    """Transform of A into a bigger array.
+
+    Parameters
+    ----------
+    A : numpy array
+        Lidar data
+    final_size : int
+        The desired finals ize
+
+    Returns
+    -------
+    B : numpy array
+        conversion of A in a bigger size
+
+    """
+    N = A.shape[0]
+    if N > final_size:
+        raise ValueError(
+            """"The lidar data to augmentate is bigger than the target size
+            (size {} against target size {}). Maybe you should use
+            sparse_sample() instad""". format(N, final_size))
+    m = final_size-N
+    B1 = np.ones((m, 2))*A[0]
+    B = np.concatenate((B1, A[0:, :]), axis=0)
+    return B
+
+
 def lidar_formater(lidar_data, target_lidar_size, angle_sort=True):
-    '''
-    transforms a variable size lidar data to a fixed size numpy array. If the lidar
-    is too big, points are cropped. If it's too small, the first value is padded.
-    If lidar_data is empty, it is filled with zeros and conversion_error = True is returned
-    
+    """
+    transforms a variable size lidar data to a fixed size numpy array. If the
+    lidar is too big, points are cropped. If it's too small, the first value
+    is padded. If lidar_data is empty, it is filled with zeros and
+    conversion_error = True is returned
+
 
     Parameters
     ----------
@@ -29,8 +88,8 @@ def lidar_formater(lidar_data, target_lidar_size, angle_sort=True):
     target_lidar_size : TYPE int
         Number of points desired for output
     angle_srot : TYPe boolean
-        Whether or not the values should be ordered by growing theta (may impact
-        perfromances if the target lidar size is very big)
+        Whether or not the values should be ordered by growing theta (may
+        impact performances if the target lidar size is very big)
 
     Returns
     -------
@@ -39,38 +98,33 @@ def lidar_formater(lidar_data, target_lidar_size, angle_sort=True):
     conversion_error: TYPE boolean
         whether or not an error occured
 
-    '''
-    # TODO : is copy padding really the best thing to do ? 
-    ### Data padding if lidar is too short on this step
+    """
+
+    if angle_sort:
+        idx = lidar_data[:, 0].argsort()
+        lidar_data = lidar_data[idx, :]
 
     n_points_received = lidar_data.shape[0]
     if lidar_data.size == 0:
         return np.zeros((target_lidar_size, 2)), True
-    
-    if n_points_received < target_lidar_size: #not enough points !
-        temp = np.ones((target_lidar_size-n_points_received , 2))*lidar_data[0] #lets copy the first value multiple time
-        adapted_lidar = np.concatenate((lidar_data,temp)) 
-        new_lidar_data = adapted_lidar
+
+    if n_points_received < target_lidar_size:  # not enough points !
+        new_lidar_data = array_augmentation(lidar_data, target_lidar_size)
+
     else:
-        new_lidar_data = lidar_data[:target_lidar_size,0:2]
+        new_lidar_data = sparse_sample(lidar_data, target_lidar_size)
 
-    if angle_sort:
-        idx = new_lidar_data[:,0].argsort()
-        new_lidar_data = new_lidar_data[idx,:]
-        
     return new_lidar_data, False
-        
-
 
 
 class BoxAirSimEnv(gym.Env):
-    """Custom AirSim Environment with Box action space that follows gym interface"""
+    """Custom AirSim Environment with Box action space following gym interface"""
 
-    def __init__(self, client, lidar_size, dt, ClockSpeed,UE_spawn_point,
-                 liste_checkpoints_coordinates, liste_spawn_point,is_rendered=False,
-                 random_reverse = False):
+    def __init__(self, client, lidar_size, dt, ClockSpeed, UE_spawn_point,
+                 liste_checkpoints_coordinates, liste_spawn_point, is_rendered=False,
+                 random_reverse=False):
         """
-        
+
 
         Parameters
         ----------
@@ -91,7 +145,7 @@ class BoxAirSimEnv(gym.Env):
         random_reverse : boolean
             whether or not the the observations and action should randomly be reversed.
             Strongly advised for training
-        
+
 
         Returns
         -------
@@ -99,335 +153,302 @@ class BoxAirSimEnv(gym.Env):
 
         """
         super(BoxAirSimEnv, self).__init__()
-        
-		# Define action and observation space
-            
-        self.client=client
+
+        # Define action and observation space
+
+        self.client = client
         self.car_controls = airsim.CarControls()
-        self.car_state = client.getCarState() 
+        self.car_state = client.getCarState()
         # car_state is an AirSim object that contains informations that are not
-        # obtainable in real experiments. Therefore, it cannot be used as a 
+        # obtainable in real experiments. Therefore, it cannot be used as a
         # MDP object. However, it is useful for computing the reward
-        
-        
-        self.is_rendered=is_rendered
+
+        self.is_rendered = is_rendered
         self.dt = dt
         self.ClockSpeed = ClockSpeed
-        self.lidar_size=lidar_size
+        self.lidar_size = lidar_size
         self.random_reverse = random_reverse
         self.reversed_world = None
-        
-        self.total_reward=0
-        self.done=False
-        
+
+        self.total_reward = 0
+        self.done = False
+
         self.UE_spawn_point = UE_spawn_point
         self.liste_checkpoints_coordonnes = liste_checkpoints_coordinates
         self.liste_spawn_point = liste_spawn_point
-        
-        
-        
+
+
 ########## Below are MDP related objects #############
-        
-        self.action_space = gym.spaces.Box(low   = np.array([0, 0], dtype=np.float32),
-                                       high  = np.array([ 1,  1], dtype=np.float32),
-                                       dtype=np.float32
-                                       )
-        
+
+        self.action_space = gym.spaces.Box(low=np.array([0, 0], dtype=np.float32),
+                                           high=np.array(
+                                               [1,  1], dtype=np.float32),
+                                           dtype=np.float32
+                                           )
+
         # In this order
         # "throttle"
         # "steering"
         # both actions are normalized in [0,1]
-		 #Example for using image as input (channel-first; channel-last also works):
-             
-        low =np.zeros((lidar_size,2), dtype=np.float32)
-        high=np.zeros((lidar_size,2), dtype=np.float32)
-        
-        low[:,0]=-np.pi
-        low[:,1]=0
-        
-        high[:,0]=np.pi
-        high[:,1]=np.inf
-        
+        # Example for using image as input (channel-first; channel-last also works):
+
+        low = np.zeros((lidar_size, 2), dtype=np.float32)
+        high = np.zeros((lidar_size, 2), dtype=np.float32)
+
+        low[:, 0] = -np.pi
+        low[:, 1] = 0
+
+        high[:, 0] = np.pi
+        high[:, 1] = np.inf
+
         self.observation_space = gym.spaces.Dict(spaces={
-            "current_lidar" : gym.spaces.Box(low=low, high=high, shape=(lidar_size,2), dtype=np.float32), # the format is [angle , radius]
-            "prev_lidar"    : gym.spaces.Box(low=low, high=high, shape=(lidar_size,2), dtype=np.float32),
-            
-            "prev_throttle": gym.spaces.Box(low=0  , high=1   , shape=(1,)),
+            # the format is [angle , radius]
+            "current_lidar": gym.spaces.Box(low=low, high=high, shape=(lidar_size, 2), dtype=np.float32),
+            "prev_lidar": gym.spaces.Box(low=low, high=high, shape=(lidar_size, 2), dtype=np.float32),
+
+            "prev_throttle": gym.spaces.Box(low=0, high=1, shape=(1,)),
             "prev_steering": gym.spaces.Box(low=0, high=1, shape=(1,))
-            })
-        
-  
-        
-        
-        
-        
-        
-        
-        
-        
+        })
+
     def step(self, action):
-        info={} #Just a debugging feature here
-        
-############ The actions are extracted from the "action" argument
-        
+        info = {}  # Just a debugging feature here
+
+# The actions are extracted from the "action" argument
+
         denormalized_action = denormalize_action(action)
         self.car_controls.throttle = float(denormalized_action[0])
         self.car_controls.steering = float(denormalized_action[1])
-        
+
         if self.reversed_world:
-            self.car_controls.steering*= -1
+            self.car_controls.steering *= -1
 
         self.client.setCarControls(self.car_controls)
-        
 
-        
     # Now that everything is good and proper, let's run  AirSim a bit
         self.client.simPause(False)
-        time.sleep(self.dt/self.ClockSpeed) #TODO a dedicated thread may be more efficient
+        # TODO a dedicated thread may be more efficient
+        time.sleep(self.dt/self.ClockSpeed)
         self.client.simPause(True)
-        
 
     # Get the state from AirSim
         self.car_state = self.client.getCarState()
-        
+
         self.prev_throttle = np.array([action[0]])
         self.prev_steering = np.array([action[1]])
-        
+
         position = self.car_state.kinematics_estimated.position
-        gate_passed, finished_race = self.Circuit1.cycle_tick(position.x_val, position.y_val) #updating the checkpoint situation
+        gate_passed, finished_race = self.Circuit1.cycle_tick(
+            position.x_val, position.y_val)  # updating the checkpoint situation
 
 
-    
 ############ extracts the observation ################
-        current_raw_lidar = convert_lidar_data_to_polar(self.client.getLidarData())
-        
-        self.current_lidar, lidar_error = lidar_formater(current_raw_lidar, target_lidar_size=self.lidar_size)
+        current_raw_lidar = convert_lidar_data_to_polar(
+            self.client.getLidarData())
+
+        self.current_lidar, lidar_error = lidar_formater(
+            current_raw_lidar, target_lidar_size=self.lidar_size)
 ########### Error killswitch, in case the car is going rogue !#########
-        if lidar_error or self.done: #self.done can never be true at this point unless the lidar was corrupted in reset() 
-            observation = { #dummy observation, save the sim !
-            "current_lidar" : self.current_lidar, 
-            "prev_lidar"   : self.prev_lidar,
-            "prev_throttle" : self.prev_throttle,
-            "prev_steering" : self.prev_steering
+        if lidar_error or self.done:  # self.done can never be true at this point unless the lidar was corrupted in reset()
+            observation = {  # dummy observation, save the sim !
+                "current_lidar": self.current_lidar,
+                "prev_lidar": self.prev_lidar,
+                "prev_throttle": self.prev_throttle,
+                "prev_steering": self.prev_steering
             }
-            print("Caution, no point was observed by the lidar, the vehicule may be escaping: reseting sim")
-            return observation, 0, True, {"Lidar error":True}
-        
-        
-        
+            print(
+                "Caution, no point was observed by the lidar, the vehicule may be escaping: reseting sim")
+            return observation, 0, True, {"Lidar error": True}
+
+
 ########## Reversing the world for data augmentation ##########################
         if self.reversed_world:
-            self.current_lidar[:,0]*=-1
+            self.current_lidar[:, 0] *= -1
             self.current_lidar = self.current_lidar[::-1]
 ######### Observation ############################
         observation = {
-            "current_lidar" : self.current_lidar, 
-            "prev_lidar"   : self.prev_lidar,
-            "prev_throttle" : self.prev_throttle,
-            "prev_steering" : self.prev_steering
-            }
+            "current_lidar": self.current_lidar,
+            "prev_lidar": self.prev_lidar,
+            "prev_throttle": self.prev_throttle,
+            "prev_steering": self.prev_steering
+        }
 
         self.prev_lidar = self.current_lidar
-        
+
 ############# Updates the reward ###############
         # collision info is necessary to compute reward
         collision_info = self.client.simGetCollisionInfo()
         crash = collision_info.has_collided
-        
+
         reward = 0
         if crash:
-            reward =-100
-            
-            
-        elif self.car_state.speed <=1: # Lets force the car to move
+            reward = -100
+
+        elif self.car_state.speed <= 1:  # Lets force the car to move
             reward = -0.1
 
-        if gate_passed : 
+        if gate_passed:
             reward += 50
             print("gate_passed")
-        
+
         self.total_reward = self.total_reward + reward
-        
-    
-        
+
         if crash:
-            self.done=True
+            self.done = True
             print("Crash occured")
             print("Episode reward : " + str(self.total_reward) + 2*'\n')
-        
-    
+
     # displays ( or not ) the lidar observation
         if self.is_rendered:
             self.render()
 
-
         return observation, reward, self.done, info
-
-
-
-
-
-
-
-
-
-
 
     def reset(self):
 
         self.client.reset()
 
-
-        
-        
-
         # Picking a random spawn
-        Circuit_wrapper1=Circuit_wrapper(self.liste_spawn_point, self.liste_checkpoints_coordonnes, UE_spawn_point=self.UE_spawn_point)
+        Circuit_wrapper1 = Circuit_wrapper(
+            self.liste_spawn_point, self.liste_checkpoints_coordonnes, UE_spawn_point=self.UE_spawn_point)
         spawn_point, theta, self.Circuit1 = Circuit_wrapper1.sample_random_spawn_point()
-        
-        
-        # be careful, the call arguments for quaterninons are x,y,z,w 
-        x_val,y_val,z_val = spawn_point.x, spawn_point.y, spawn_point.z
-        
+
+        # be careful, the call arguments for quaterninons are x,y,z,w
+        x_val, y_val, z_val = spawn_point.x, spawn_point.y, spawn_point.z
+
         pose = airsim.Pose()
-        
-        orientation= airsim.Quaternionr (0,0,np.sin(theta/2)*1,np.cos(theta/2))
-        position = airsim.Vector3r ( x_val, y_val, z_val)
-        pose.position=position
-        pose.orientation=orientation
+
+        orientation = airsim.Quaternionr(
+            0, 0, np.sin(theta/2)*1, np.cos(theta/2))
+        position = airsim.Vector3r(x_val, y_val, z_val)
+        pose.position = position
+        pose.orientation = orientation
         self.client.simSetVehiclePose(pose, ignore_collision=True)
-        
+
     ##########
 
         self.throttle = 0
         self.steering = 0
 
         self.done = False
-        
-        self.total_reward=0
-        self.client.simContinueForFrames( 100 ) #let's skip the first frames to inialise lidar and make sure everything is right
-        time.sleep(1)  #the lidar data can take a bit of time before initialisation.
-        
-        current_raw_lidar = convert_lidar_data_to_polar(self.client.getLidarData())
-        self.current_lidar, lidar_error = lidar_formater(current_raw_lidar, self.lidar_size)
+
+        self.total_reward = 0
+        # let's skip the first frames to inialise lidar and make sure everything is right
+        self.client.simContinueForFrames(100)
+        # the lidar data can take a bit of time before initialisation.
+        time.sleep(1)
+
+        current_raw_lidar = convert_lidar_data_to_polar(
+            self.client.getLidarData())
+        self.current_lidar, lidar_error = lidar_formater(
+            current_raw_lidar, self.lidar_size)
         self.prev_lidar = np.copy(self.current_lidar)
-            
-        
+
         print("reset")
         init_normalized_action = normalize_action(np.array([0, 0]))
         self.throttle = init_normalized_action[0]
         self.steering = init_normalized_action[1]
         self.prev_throttle = np.array([init_normalized_action[0]])
         self.prev_steering = np.array([init_normalized_action[1]])
-        
+
         if lidar_error:
-            observation = { # dummy observation, the sim will end anyway
-            "current_lidar" : self.current_lidar,
-            "prev_lidar"    : self.prev_lidar,
-            "prev_throttle" : self.prev_throttle,
-            "prev_steering" : self.prev_steering
+            observation = {  # dummy observation, the sim will end anyway
+                "current_lidar": self.current_lidar,
+                "prev_lidar": self.prev_lidar,
+                "prev_throttle": self.prev_throttle,
+                "prev_steering": self.prev_steering
             }
-            
-            
-            
-            print("Caution, no point was observed by the lidar, the vehicule may be escaping: reseting sim")
-            self.done=True # Alas, Done cannot be returned by init, but step() will take care of ending the sim
-        
-        
-        if self.random_reverse :
+
+            print(
+                "Caution, no point was observed by the lidar, the vehicule may be escaping: reseting sim")
+            # Alas, Done cannot be returned by init, but step() will take care of ending the sim
+            self.done = True
+
+        if self.random_reverse:
             self.reversed_world = random.choice([False, True])
-            
-        if self.reversed_world :
-            self.current_lidar[:,0]*= -1
+
+        if self.reversed_world:
+            self.current_lidar[:, 0] *= -1
             self.current_lidar = self.current_lidar[::-1]
-            self.prev_lidar[:,0]*= -1
+            self.prev_lidar[:, 0] *= -1
             self.prev_lidar = self.current_lidar[::-1]
 
         observation = {
-            "current_lidar" : self.current_lidar,
-            "prev_lidar"    : self.prev_lidar,
-            "prev_throttle" : self.prev_throttle,
-            "prev_steering" : self.prev_steering
-            }
+            "current_lidar": self.current_lidar,
+            "prev_lidar": self.prev_lidar,
+            "prev_throttle": self.prev_throttle,
+            "prev_steering": self.prev_steering
+        }
 
         return observation  # reward, done, info can't be included
-
-
-
-
-
-
 
     def render(self, mode='human'):
         if not self.is_rendered:
             fig = plt.figure()
             self.ax = fig.add_subplot(projection='polar')
             self.is_rendered = True
-            
+
         self.ax.clear()
-        T=self.current_lidar[:,0]
-        R=self.current_lidar[:,1]
-        self.ax.scatter(T,R)
+        T = self.current_lidar[:, 0]
+        R = self.current_lidar[:, 1]
+        self.ax.scatter(T, R)
         plt.pause(0.01)
         plt.draw()
-        
+
         ########### Image ###############
         responses = self.client.simGetImages([
-        airsim.ImageRequest("Camera1", airsim.ImageType.Scene, False, False)], "MyVehicle")  #scene vision image in uncompressed RGB array
+            airsim.ImageRequest("Camera1", airsim.ImageType.Scene, False, False)], "MyVehicle")  # scene vision image in uncompressed RGB array
         response = responses[0]
-    
+
         # get numpy array
-        img1d = np.frombuffer(response.image_data_uint8, dtype=np.uint8) 
-        
+        img1d = np.frombuffer(response.image_data_uint8, dtype=np.uint8)
+
         # reshape array to 4 channel image array H X W X 4
         img_rgb = img1d.reshape(response.height, response.width, 3)
-        
+
         cv2.imshow("image", img_rgb)
-        
-        
 
-    def close (self):
-         self.client.simPause(False)
-         self.client.enableApiControl(False)
-         
-
+    def close(self):
+        self.client.simPause(False)
+        self.client.enableApiControl(False)
 
     def spawn_points_checker(self, wait_time=1):
         self.close()
-        i=0
+        i = 0
         for spawn_point in self.liste_spawn_point:
             print("Spawn : " + str(i)+'\n')
             theta_m = spawn_point.theta_min
-            theta_M = spawn_point.theta_max            
-            x_val,y_val,z_val = spawn_point.x, spawn_point.y, spawn_point.z
-        
+            theta_M = spawn_point.theta_max
+            x_val, y_val, z_val = spawn_point.x, spawn_point.y, spawn_point.z
 
             pose = airsim.Pose()
             print('\tTheta min = '+str(theta_m))
-            orientation= airsim.Quaternionr (0,0,np.sin(theta_m/2)*1,np.cos(theta_m/2))
-            position = airsim.Vector3r ( x_val, y_val, z_val)
-            pose.position=position
-            pose.orientation=orientation
+            orientation = airsim.Quaternionr(
+                0, 0, np.sin(theta_m/2)*1, np.cos(theta_m/2))
+            position = airsim.Vector3r(x_val, y_val, z_val)
+            pose.position = position
+            pose.orientation = orientation
             self.client.simSetVehiclePose(pose, ignore_collision=True)
             time.sleep(wait_time)
-            
+
             print('\tTheta max = '+str(theta_M))
-            orientation= airsim.Quaternionr (0,0,np.sin(theta_M/2)*1,np.cos(theta_M/2))
-            position = airsim.Vector3r ( x_val, y_val, z_val)
-            pose.position=position
-            pose.orientation=orientation
+            orientation = airsim.Quaternionr(
+                0, 0, np.sin(theta_M/2)*1, np.cos(theta_M/2))
+            position = airsim.Vector3r(x_val, y_val, z_val)
+            pose.position = position
+            pose.orientation = orientation
             self.client.simSetVehiclePose(pose, ignore_collision=True)
             time.sleep(wait_time)
-            i+=1
-            
+            i += 1
+
+
 class BoxAirSimEnv_5_memory(gym.Env):
     """Custom AirSim Environment with Box action space that follows gym interface"""
 
-    def __init__(self, client, lidar_size, dt, ClockSpeed,UE_spawn_point,
-                 liste_checkpoints_coordinates, liste_spawn_point,is_rendered=False,
-                 random_reverse = False):
+    def __init__(self, client, lidar_size, dt, ClockSpeed, UE_spawn_point,
+                 liste_checkpoints_coordinates, liste_spawn_point, is_rendered=False,
+                 random_reverse=False):
         """
-        
+
 
         Parameters
         ----------
@@ -448,7 +469,7 @@ class BoxAirSimEnv_5_memory(gym.Env):
         random_reverse : boolean
             whether or not the the observations and action should randomly be reversed.
             Strongly advised for training
-        
+
 
         Returns
         -------
@@ -456,386 +477,353 @@ class BoxAirSimEnv_5_memory(gym.Env):
 
         """
         super(BoxAirSimEnv_5_memory, self).__init__()
-        
-		# Define action and observation space
-            
-        self.client=client
+
+        # Define action and observation space
+
+        self.client = client
         self.car_controls = airsim.CarControls()
-        self.car_state = client.getCarState() 
+        self.car_state = client.getCarState()
         # car_state is an AirSim object that contains informations that are not
-        # obtainable in real experiments. Therefore, it cannot be used as a 
+        # obtainable in real experiments. Therefore, it cannot be used as a
         # MDP object. However, it is useful for computing the reward
-        
-        
-        self.is_rendered=is_rendered
+
+        self.is_rendered = is_rendered
         self.dt = dt
         self.ClockSpeed = ClockSpeed
-        self.lidar_size=lidar_size
+        self.lidar_size = lidar_size
         self.random_reverse = random_reverse
         self.reversed_world = None
-        
-        self.total_reward=0
-        self.done=False
-        
+
+        self.total_reward = 0
+        self.done = False
+
         self.UE_spawn_point = UE_spawn_point
         self.liste_checkpoints_coordonnes = liste_checkpoints_coordinates
         self.liste_spawn_point = liste_spawn_point
-        
-        
-        
+
+
 ########## Below are MDP related objects #############
-        
-        self.action_space = gym.spaces.Box(low   = np.array([0, 0], dtype=np.float32),
-                                       high  = np.array([ 1,  1], dtype=np.float32),
-                                       dtype=np.float32
-                                       )
-        
+
+        self.action_space = gym.spaces.Box(low=np.array([0, 0],
+                                                        dtype=np.float32),
+                                           high=np.array(
+                                               [1,  1], dtype=np.float32),
+                                           dtype=np.float32
+                                           )
+
         # In this order
         # "throttle"
         # "steering"
         # both actions are normalized in [0,1]
-		 #Example for using image as input (channel-first; channel-last also works):
-             
-        low =np.zeros((lidar_size,2), dtype=np.float32)
-        high=np.zeros((lidar_size,2), dtype=np.float32)
-        
-        low[:,0]=-np.pi
-        low[:,1]=0
-        
-        high[:,0]=np.pi
-        high[:,1]=np.inf
-        
+        # Example for using image as input (channel-first; channel-last also works):
+
+        low = np.zeros((lidar_size, 2), dtype=np.float32)
+        high = np.zeros((lidar_size, 2), dtype=np.float32)
+
+        low[:, 0] = -np.pi
+        low[:, 1] = 0
+
+        high[:, 0] = np.pi
+        high[:, 1] = np.inf
+
         self.observation_space = gym.spaces.Dict(spaces={
-            "current_lidar"  : gym.spaces.Box(low=low, high=high, shape=(lidar_size,2), dtype=np.float32), # the format is [angle , radius]
-            "prev_lidar1"    : gym.spaces.Box(low=low, high=high, shape=(lidar_size,2), dtype=np.float32),
-            "prev_lidar2"    : gym.spaces.Box(low=low, high=high, shape=(lidar_size,2), dtype=np.float32),
-            "prev_lidar3"    : gym.spaces.Box(low=low, high=high, shape=(lidar_size,2), dtype=np.float32),
-            "prev_lidar4"    : gym.spaces.Box(low=low, high=high, shape=(lidar_size,2), dtype=np.float32),
-            "prev_lidar5"    : gym.spaces.Box(low=low, high=high, shape=(lidar_size,2), dtype=np.float32),
-            
-            "prev_throttle": gym.spaces.Box(low=0  , high=1   , shape=(1,)),
+            # the format is [angle , radius]
+            "current_lidar": gym.spaces.Box(low=low, high=high, shape=(lidar_size, 2), dtype=np.float32),
+            "prev_lidar1": gym.spaces.Box(low=low, high=high, shape=(lidar_size, 2), dtype=np.float32),
+            "prev_lidar2": gym.spaces.Box(low=low, high=high, shape=(lidar_size, 2), dtype=np.float32),
+            "prev_lidar3": gym.spaces.Box(low=low, high=high, shape=(lidar_size, 2), dtype=np.float32),
+            "prev_lidar4": gym.spaces.Box(low=low, high=high, shape=(lidar_size, 2), dtype=np.float32),
+            "prev_lidar5": gym.spaces.Box(low=low, high=high, shape=(lidar_size, 2), dtype=np.float32),
+
+            "prev_throttle": gym.spaces.Box(low=0, high=1, shape=(1,)),
             "prev_steering": gym.spaces.Box(low=0, high=1, shape=(1,))
-            })
-        
-  
-        
-        
-        
-        
-        
-        
-        
-        
+        })
+
     def step(self, action):
-        info={} #Just a debugging feature here
-        
-############ The actions are extracted from the "action" argument
-        
+        info = {}  # Just a debugging feature here
+
+# The actions are extracted from the "action" argument
+
         denormalized_action = denormalize_action(action)
         self.car_controls.throttle = float(denormalized_action[0])
         self.car_controls.steering = float(denormalized_action[1])
-        
+
         if self.reversed_world:
-            self.car_controls.steering*= -1
+            self.car_controls.steering *= -1
 
         self.client.setCarControls(self.car_controls)
-        
 
-        
     # Now that everything is good and proper, let's run  AirSim a bit
         self.client.simPause(False)
-        time.sleep(self.dt/self.ClockSpeed) #TODO a dedicated thread may be more efficient
+        # TODO a dedicated thread may be more efficient
+        time.sleep(self.dt/self.ClockSpeed)
         self.client.simPause(True)
-        
 
     # Get the state from AirSim
         self.car_state = self.client.getCarState()
-        
+
         self.prev_throttle = np.array([action[0]])
         self.prev_steering = np.array([action[1]])
-        
+
         position = self.car_state.kinematics_estimated.position
-        gate_passed, finished_race = self.Circuit1.cycle_tick(position.x_val, position.y_val) #updating the checkpoint situation
+        gate_passed, finished_race = self.Circuit1.cycle_tick(
+            position.x_val, position.y_val)  # updating the checkpoint situation
 
 
-    
 ############ extracts the observation ################
-        current_raw_lidar = convert_lidar_data_to_polar(self.client.getLidarData())
-        
-        self.current_lidar, lidar_error = lidar_formater(current_raw_lidar, target_lidar_size=self.lidar_size)
-        
+        current_raw_lidar = convert_lidar_data_to_polar(
+            self.client.getLidarData())
+
+        self.current_lidar, lidar_error = lidar_formater(
+            current_raw_lidar, target_lidar_size=self.lidar_size)
+
 ########### Error killswitch, in case the car is going rogue !#########
-        if lidar_error or self.done: #self.done can never be true at this point unless the lidar was corrupted in reset() 
-            observation = { #dummy observation, save the sim !
-            "current_lidar" : self.current_lidar, 
-            "prev_lidar1"   : self.prev_lidar1,
-            "prev_lidar2"   : self.prev_lidar2,
-            "prev_lidar3"   : self.prev_lidar3,
-            "prev_lidar4"   : self.prev_lidar4,
-            "prev_lidar5"   : self.prev_lidar5,
-            "prev_throttle" : self.prev_throttle,
-            "prev_steering" : self.prev_steering
+        if lidar_error or self.done:  # self.done can never be true at this point unless the lidar was corrupted in reset()
+            observation = {  # dummy observation, save the sim !
+                "current_lidar": self.current_lidar,
+                "prev_lidar1": self.prev_lidar1,
+                "prev_lidar2": self.prev_lidar2,
+                "prev_lidar3": self.prev_lidar3,
+                "prev_lidar4": self.prev_lidar4,
+                "prev_lidar5": self.prev_lidar5,
+                "prev_throttle": self.prev_throttle,
+                "prev_steering": self.prev_steering
             }
-            print("Caution, no point was observed by the lidar, the vehicule may be escaping: reseting sim")
-            return observation, 0, True, {"Lidar error":True}
+            print(
+                "Caution, no point was observed by the lidar, the vehicule may be escaping: reseting sim")
+            return observation, 0, True, {"Lidar error": True}
 
 #############################################
-        
-        if self.reversed_world :
-            self.current_lidar[:,0]*= -1
+
+        if self.reversed_world:
+            self.current_lidar[:, 0] *= -1
             self.current_lidar = self.current_lidar[::-1]
-            self.prev_lidar1[:,0]*= -1
+            self.prev_lidar1[:, 0] *= -1
             self.prev_lidar1 = self.prev_lidar1[::-1]
-            self.prev_lidar2[:,0]*= -1
+            self.prev_lidar2[:, 0] *= -1
             self.prev_lidar2 = self.prev_lidar2[::-1]
-            self.prev_lidar3[:,0]*= -1
+            self.prev_lidar3[:, 0] *= -1
             self.prev_lidar3 = self.prev_lidar3[::-1]
-            self.prev_lidar4[:,0]*= -1
+            self.prev_lidar4[:, 0] *= -1
             self.prev_lidar4 = self.prev_lidar4[::-1]
-            self.prev_lidar5[:,0]*= -1
+            self.prev_lidar5[:, 0] *= -1
             self.prev_lidar5 = self.prev_lidar5[::-1]
 
         observation = {
-            "current_lidar" : self.current_lidar,
-            "prev_lidar1"    : self.prev_lidar1,
-            "prev_lidar2"    : self.prev_lidar2,
-            "prev_lidar3"    : self.prev_lidar3,
-            "prev_lidar4"    : self.prev_lidar4,
-            "prev_lidar5"    : self.prev_lidar5,
-            
-            "prev_throttle" : self.prev_throttle,
-            "prev_steering" : self.prev_steering
-            }
+            "current_lidar": self.current_lidar,
+            "prev_lidar1": self.prev_lidar1,
+            "prev_lidar2": self.prev_lidar2,
+            "prev_lidar3": self.prev_lidar3,
+            "prev_lidar4": self.prev_lidar4,
+            "prev_lidar5": self.prev_lidar5,
+
+            "prev_throttle": self.prev_throttle,
+            "prev_steering": self.prev_steering
+        }
         self.prev_lidar5 = self.prev_lidar4
         self.prev_lidar4 = self.prev_lidar3
         self.prev_lidar3 = self.prev_lidar2
         self.prev_lidar2 = self.prev_lidar1
         self.prev_lidar1 = self.current_lidar
-        
+
 ############# Updates the reward ###############
         # collision info is necessary to compute reward
         collision_info = self.client.simGetCollisionInfo()
         crash = collision_info.has_collided
-        
+
         reward = 0
         if crash:
-            reward =-100
-            
-            
-        elif self.car_state.speed <=1: # Lets force the car to move
+            reward = -100
+
+        elif self.car_state.speed <= 1:  # Lets force the car to move
             reward = -0.1
 
-        if gate_passed : 
+        if gate_passed:
             reward += 50
             print("gate_passed")
-        
+
         self.total_reward = self.total_reward + reward
-        
-    
-        
+
         if crash:
-            self.done=True
+            self.done = True
             print("Crash occured")
             print("Episode reward : " + str(self.total_reward) + 2*'\n')
-        
-    
+
     # displays ( or not ) the lidar observation
         if self.is_rendered:
             self.render()
 
-
         return observation, reward, self.done, info
-
-
-
-
-
-
-
-
-
-
 
     def reset(self):
 
         self.client.reset()
 
+        # be careful, the call arguments for quaterninons are x,y,z,w
 
-        # be careful, the call arguments for quaterninons are x,y,z,w 
-        
-
-        
-        Circuit_wrapper1=Circuit_wrapper(self.liste_spawn_point, self.liste_checkpoints_coordonnes, UE_spawn_point=self.UE_spawn_point)
+        Circuit_wrapper1 = Circuit_wrapper(
+            self.liste_spawn_point, self.liste_checkpoints_coordonnes, UE_spawn_point=self.UE_spawn_point)
         spawn_point, theta, self.Circuit1 = Circuit_wrapper1.sample_random_spawn_point()
-        
-        
-        
-        x_val,y_val,z_val = spawn_point.x, spawn_point.y, spawn_point.z
-        
 
-        
+        x_val, y_val, z_val = spawn_point.x, spawn_point.y, spawn_point.z
+
         pose = airsim.Pose()
-        
-        orientation= airsim.Quaternionr (0,0,np.sin(theta/2)*1,np.cos(theta/2))
-        position = airsim.Vector3r ( x_val, y_val, z_val)
-        pose.position=position
-        pose.orientation=orientation
+
+        orientation = airsim.Quaternionr(
+            0, 0, np.sin(theta/2)*1, np.cos(theta/2))
+        position = airsim.Vector3r(x_val, y_val, z_val)
+        pose.position = position
+        pose.orientation = orientation
         self.client.simSetVehiclePose(pose, ignore_collision=True)
-        
+
     ##########
 
         self.throttle = 0
         self.steering = 0
 
         self.done = False
-        
-        self.total_reward=0
-        self.client.simContinueForFrames( 100 ) #let's skip the first frames to inialise lidar and make sure everything is right
-        time.sleep(1)  #the lidar data can take a bit of time before initialisation.
-        
-        current_raw_lidar = convert_lidar_data_to_polar(self.client.getLidarData())
-        self.current_lidar, lidar_error = lidar_formater(current_raw_lidar, self.lidar_size)
-        
+
+        self.total_reward = 0
+        # let's skip the first frames to inialise lidar and make sure everything is right
+        self.client.simContinueForFrames(100)
+        # the lidar data can take a bit of time before initialisation.
+        time.sleep(1)
+
+        current_raw_lidar = convert_lidar_data_to_polar(
+            self.client.getLidarData())
+        self.current_lidar, lidar_error = lidar_formater(
+            current_raw_lidar, self.lidar_size)
+
         self.prev_lidar1 = np.copy(self.current_lidar)
         self.prev_lidar2 = np.copy(self.current_lidar)
         self.prev_lidar3 = np.copy(self.current_lidar)
         self.prev_lidar4 = np.copy(self.current_lidar)
         self.prev_lidar5 = np.copy(self.current_lidar)
-        
 
-        
         print("reset")
         init_normalized_action = normalize_action(np.array([0, 0]))
         self.throttle = init_normalized_action[0]
         self.steering = init_normalized_action[1]
         self.prev_throttle = np.array([init_normalized_action[0]])
         self.prev_steering = np.array([init_normalized_action[1]])
-        
+
         if lidar_error:
-            observation = { # dummy observation, the sim will end anyway
-            "current_lidar" : self.current_lidar,
-            "prev_lidar1"    : self.prev_lidar1,
-            "prev_lidar2"    : self.prev_lidar2,
-            "prev_lidar3"    : self.prev_lidar3,
-            "prev_lidar4"    : self.prev_lidar4,
-            "prev_lidar5"    : self.prev_lidar5,
-            
-            "prev_throttle" : self.prev_throttle,
-            "prev_steering" : self.prev_steering
+            observation = {  # dummy observation, the sim will end anyway
+                "current_lidar": self.current_lidar,
+                "prev_lidar1": self.prev_lidar1,
+                "prev_lidar2": self.prev_lidar2,
+                "prev_lidar3": self.prev_lidar3,
+                "prev_lidar4": self.prev_lidar4,
+                "prev_lidar5": self.prev_lidar5,
+
+                "prev_throttle": self.prev_throttle,
+                "prev_steering": self.prev_steering
             }
-            
-            
-            
-            print("Caution, no point was observed by the lidar, the vehicule may be escaping: reseting sim")
-            self.done=True # Alas, Done cannot be returned by init, but step() will take care of ending the sim
-        
-        if self.random_reverse :
+
+            print(
+                "Caution, no point was observed by the lidar, the vehicule may be escaping: reseting sim")
+            # Alas, Done cannot be returned by init, but step() will take care of ending the sim
+            self.done = True
+
+        if self.random_reverse:
             self.reversed_world = random.choice([False, True])
-            
-        if self.reversed_world :
-            self.current_lidar[:,0]*= -1
+
+        if self.reversed_world:
+            self.current_lidar[:, 0] *= -1
             self.current_lidar = self.current_lidar[::-1]
-            self.prev_lidar1[:,0]*= -1
+            self.prev_lidar1[:, 0] *= -1
             self.prev_lidar1 = self.current_lidar[::-1]
-            self.prev_lidar2[:,0]*= -1
+            self.prev_lidar2[:, 0] *= -1
             self.prev_lidar2 = self.current_lidar[::-1]
-            self.prev_lidar3[:,0]*= -1
+            self.prev_lidar3[:, 0] *= -1
             self.prev_lidar3 = self.current_lidar[::-1]
-            self.prev_lidar4[:,0]*= -1
+            self.prev_lidar4[:, 0] *= -1
             self.prev_lidar4 = self.current_lidar[::-1]
-            self.prev_lidar5[:,0]*= -1
+            self.prev_lidar5[:, 0] *= -1
             self.prev_lidar5 = self.current_lidar[::-1]
 
         observation = {
-            "current_lidar" : self.current_lidar,
-            "prev_lidar1"    : self.prev_lidar1,
-            "prev_lidar2"    : self.prev_lidar2,
-            "prev_lidar3"    : self.prev_lidar3,
-            "prev_lidar4"    : self.prev_lidar4,
-            "prev_lidar5"    : self.prev_lidar5,
-            
-            "prev_throttle" : self.prev_throttle,
-            "prev_steering" : self.prev_steering
-            }
+            "current_lidar": self.current_lidar,
+            "prev_lidar1": self.prev_lidar1,
+            "prev_lidar2": self.prev_lidar2,
+            "prev_lidar3": self.prev_lidar3,
+            "prev_lidar4": self.prev_lidar4,
+            "prev_lidar5": self.prev_lidar5,
+
+            "prev_throttle": self.prev_throttle,
+            "prev_steering": self.prev_steering
+        }
 
         return observation  # reward, done, info can't be included
-
-
-
-
-
-
 
     def render(self, mode='human'):
         if not self.is_rendered:
             fig = plt.figure()
             self.ax = fig.add_subplot(projection='polar')
             self.is_rendered = True
-            
+
         self.ax.clear()
-        T=self.current_lidar[:,0]
-        R=self.current_lidar[:,1]
-        self.ax.scatter(T,R)
+        T = self.current_lidar[:, 0]
+        R = self.current_lidar[:, 1]
+        self.ax.scatter(T, R)
         plt.pause(0.01)
         plt.draw()
-        
+
         ########### Image ###############
         responses = self.client.simGetImages([
-        airsim.ImageRequest("Camera1", airsim.ImageType.Scene, False, False)], "MyVehicle")  #scene vision image in uncompressed RGB array
+            airsim.ImageRequest("Camera1", airsim.ImageType.Scene, False, False)], "MyVehicle")  # scene vision image in uncompressed RGB array
         response = responses[0]
-    
+
         # get numpy array
-        img1d = np.frombuffer(response.image_data_uint8, dtype=np.uint8) 
-        
+        img1d = np.frombuffer(response.image_data_uint8, dtype=np.uint8)
+
         # reshape array to 4 channel image array H X W X 4
         img_rgb = img1d.reshape(response.height, response.width, 3)
-        
+
         cv2.imshow("image", img_rgb)
-        
-        
 
-    def close (self):
-         self.client.simPause(False)
-         self.client.enableApiControl(False)
-         
-
+    def close(self):
+        self.client.simPause(False)
+        self.client.enableApiControl(False)
 
     def spawn_points_checker(self, wait_time=1):
         self.close()
-        i=0
+        i = 0
         for spawn_point in self.liste_spawn_point:
             print("Spawn : " + str(i)+'\n')
             theta_m = spawn_point.theta_min
-            theta_M = spawn_point.theta_max            
-            x_val,y_val,z_val = spawn_point.x, spawn_point.y, spawn_point.z
-        
+            theta_M = spawn_point.theta_max
+            x_val, y_val, z_val = spawn_point.x, spawn_point.y, spawn_point.z
 
             pose = airsim.Pose()
             print('\tTheta min = '+str(theta_m))
-            orientation= airsim.Quaternionr (0,0,np.sin(theta_m/2)*1,np.cos(theta_m/2))
-            position = airsim.Vector3r ( x_val, y_val, z_val)
-            pose.position=position
-            pose.orientation=orientation
+            orientation = airsim.Quaternionr(
+                0, 0, np.sin(theta_m/2)*1, np.cos(theta_m/2))
+            position = airsim.Vector3r(x_val, y_val, z_val)
+            pose.position = position
+            pose.orientation = orientation
             self.client.simSetVehiclePose(pose, ignore_collision=True)
             time.sleep(wait_time)
-            
-            print('\tTheta max = '+str(theta_M))
-            orientation= airsim.Quaternionr (0,0,np.sin(theta_M/2)*1,np.cos(theta_M/2))
-            position = airsim.Vector3r ( x_val, y_val, z_val)
-            pose.position=position
-            pose.orientation=orientation
-            self.client.simSetVehiclePose(pose, ignore_collision=True)
-            time.sleep(wait_time)
-            i+=1            
-            
-class MultiDiscreteAirSimEnv(gym.Env):
-    """Custom AirSim Environment MultiDiscrete action space that follows gym interface"""
 
-    def __init__(self, client, lidar_size, dt, ClockSpeed,UE_spawn_point,
+            print('\tTheta max = '+str(theta_M))
+            orientation = airsim.Quaternionr(
+                0, 0, np.sin(theta_M/2)*1, np.cos(theta_M/2))
+            position = airsim.Vector3r(x_val, y_val, z_val)
+            pose.position = position
+            pose.orientation = orientation
+            self.client.simSetVehiclePose(pose, ignore_collision=True)
+            time.sleep(wait_time)
+            i += 1
+
+
+class MultiDiscreteAirSimEnv(gym.Env):
+    """Custom AirSim Environment MultiDiscrete action space that follows gym interface."""
+
+    def __init__(self, client, lidar_size, dt, ClockSpeed, UE_spawn_point,
                  liste_checkpoints_coordinates, liste_spawn_point,
-                 is_rendered=False, random_reverse = False):
+                 is_rendered=False, random_reverse=False):
         """
-        
+
 
         Parameters
         ----------
@@ -856,7 +844,7 @@ class MultiDiscreteAirSimEnv(gym.Env):
         random_reverse : boolean
             whether or not the the observations and action should randomly be reversed.
             Strongly advised for training
-        
+
 
         Returns
         -------
@@ -864,343 +852,305 @@ class MultiDiscreteAirSimEnv(gym.Env):
 
         """
         super(MultiDiscreteAirSimEnv, self).__init__()
-        
-		# Define action and observation space
-		# They must be gym.spaces objects
-		# Example when using discrete actions:
-            
-        self.client=client
+
+        # Define action and observation space
+        # They must be gym.spaces objects
+        # Example when using discrete actions:
+
+        self.client = client
         self.car_controls = airsim.CarControls()
-        self.car_state = client.getCarState() 
+        self.car_state = client.getCarState()
         # car_state is an AirSim object that contains informations that are not
-        # obtainable in real experiments. Therefore, it cannot be used as a 
+        # obtainable in real experiments. Therefore, it cannot be used as a
         # MDP object. However, it is useful for computing the reward
-        
-        
-        self.is_rendered=is_rendered
+
+        self.is_rendered = is_rendered
         self.dt = dt
         self.ClockSpeed = ClockSpeed
-        self.lidar_size=lidar_size
-        
-        self.total_reward=0
-        self.done=False
-        
+        self.lidar_size = lidar_size
+
+        self.total_reward = 0
+        self.done = False
+
         self.random_reverse = random_reverse
         self.reversed_world = None
-        
+
         self.UE_spawn_point = UE_spawn_point
         self.liste_checkpoints_coordonnes = liste_checkpoints_coordinates
         self.liste_spawn_point = liste_spawn_point
-        
-        
-        
+
+
 ########## Below are MDP related objects #############
-        
-        self.action_space = gym.spaces.MultiDiscrete([3,5])
-        
+
+        self.action_space = gym.spaces.MultiDiscrete([3, 5])
+
         # In this order
         # "throttle" -> 0 = forward  ; 1 = stop        ; 2 = reverse
         # "steering" -> 0 = full left; 1 = middle left ; 2 = straight;
         #                            ; 3 = middle right; 4 = full right
-        
-        self.throttle_arg_to_throttle = {0:1 , 1:0 ,2:-1}
-        self.steering_arg_to_steering = {0:-0.5 , 1:-0.25 , 2:0, 3:0.25, 4:0.5}
-        
-		 #Example for using image as input (channel-first; channel-last also works):
-             
-        low =np.zeros((lidar_size,2), dtype=np.float32)
-        high=np.zeros((lidar_size,2), dtype=np.float32)
-        
-        low[:,0]=-np.pi
-        low[:,1]=0
-        
-        high[:,0]=np.pi
-        high[:,1]=np.inf
-        
+
+        self.throttle_arg_to_throttle = {0: 1, 1: 0, 2: -1}
+        self.steering_arg_to_steering = {
+            0: -0.5, 1: -0.25, 2: 0, 3: 0.25, 4: 0.5}
+
+        # Example for using image as input (channel-first; channel-last also works):
+
+        low = np.zeros((lidar_size, 2), dtype=np.float32)
+        high = np.zeros((lidar_size, 2), dtype=np.float32)
+
+        low[:, 0] = -np.pi
+        low[:, 1] = 0
+
+        high[:, 0] = np.pi
+        high[:, 1] = np.inf
+
         self.observation_space = gym.spaces.Dict(spaces={
-            "current_lidar" : gym.spaces.Box(low=low, high=high, shape=(lidar_size,2), dtype=np.float32), # the format is [angle , radius]
-            "prev_lidar"    : gym.spaces.Box(low=low, high=high, shape=(lidar_size,2), dtype=np.float32),
-            
-            "prev_throttle": gym.spaces.Box(low=-1  , high=1   , shape=(1,)),
+            # the format is [angle , radius]
+            "current_lidar": gym.spaces.Box(low=low, high=high, shape=(lidar_size, 2), dtype=np.float32),
+            "prev_lidar": gym.spaces.Box(low=low, high=high, shape=(lidar_size, 2), dtype=np.float32),
+
+            "prev_throttle": gym.spaces.Box(low=-1, high=1, shape=(1,)),
             "prev_steering": gym.spaces.Box(low=-0.5, high=+0.5, shape=(1,))
-            })
-        
-  
-        
-        
-        
-        
-        
-        
-        
-        
+        })
+
     def step(self, action):
-        info={} #Just a debugging feature here
-        
-############ The actions are extracted from the "action" argument
-        throttle_arg = int(action[0])     
+        info = {}  # Just a debugging feature here
+
+# The actions are extracted from the "action" argument
+        throttle_arg = int(action[0])
         steering_arg = int(action[1])
-        
 
         self.car_controls.throttle = self.throttle_arg_to_throttle[throttle_arg]
         self.car_controls.steering = self.steering_arg_to_steering[steering_arg]
 
         if self.reversed_world:
-            self.car_controls.steering*= -1
+            self.car_controls.steering *= -1
 
         self.client.setCarControls(self.car_controls)
-        
-        
-        
+
     # Now that everything is good and proper, let's run  AirSim a bit
         self.client.simPause(False)
-        time.sleep(self.dt/self.ClockSpeed) #TODO a dedicated thread may be more efficient
+        # TODO a dedicated thread may be more efficient
+        time.sleep(self.dt/self.ClockSpeed)
         self.client.simPause(True)
-        
 
     # Get the state from AirSim
         self.car_state = self.client.getCarState()
-        
+
         self.prev_throttle = np.array([self.car_controls.throttle])
         self.prev_steering = np.array([self.car_controls.steering])
-        
+
         position = self.car_state.kinematics_estimated.position
-        gate_passed, finished_race = self.Circuit1.cycle_tick(position.x_val, position.y_val) #updating the checkpoint situation
+        gate_passed, finished_race = self.Circuit1.cycle_tick(
+            position.x_val, position.y_val)  # updating the checkpoint situation
 
 
-
-    
 ############ extracts the observation ################
-        current_raw_lidar = convert_lidar_data_to_polar(self.client.getLidarData())
-        
-        self.current_lidar, lidar_error = lidar_formater(current_raw_lidar, target_lidar_size=self.lidar_size)
+        current_raw_lidar = convert_lidar_data_to_polar(
+            self.client.getLidarData())
+
+        self.current_lidar, lidar_error = lidar_formater(
+            current_raw_lidar, target_lidar_size=self.lidar_size)
 ########### Error killswitch, in case the car is going rogue !#########
-        if lidar_error or self.done: #self.done can never be true at this point unless the lidar was corrupted in reset() 
-            observation = { #dummy observation, save the sim !
-            "current_lidar" : self.current_lidar, 
-            "prev_lidar"   : self.prev_lidar,
-            "prev_throttle" : self.prev_throttle,
-            "prev_steering" : self.prev_steering
+        if lidar_error or self.done:  # self.done can never be true at this point unless the lidar was corrupted in reset()
+            observation = {  # dummy observation, save the sim !
+                "current_lidar": self.current_lidar,
+                "prev_lidar": self.prev_lidar,
+                "prev_throttle": self.prev_throttle,
+                "prev_steering": self.prev_steering
             }
-            print("Caution, no point was observed by the lidar, the vehicule may be escaping: reseting sim")
-            return observation, 0, True, {"Lidar error":True}
-        
-        
-        
+            print(
+                "Caution, no point was observed by the lidar, the vehicule may be escaping: reseting sim")
+            return observation, 0, True, {"Lidar error": True}
+
+
 ########## Reversing the world for data augmentation ##########################
         if self.reversed_world:
-            self.current_lidar[:,0]*=-1
+            self.current_lidar[:, 0] *= -1
             self.current_lidar = self.current_lidar[::-1]
 ######### Observation ############################
         observation = {
-            "current_lidar" : self.current_lidar,
-            "prev_lidar"   : self.prev_lidar,
-            "prev_throttle" : self.prev_throttle,
-            "prev_steering" : self.prev_steering
-            }
+            "current_lidar": self.current_lidar,
+            "prev_lidar": self.prev_lidar,
+            "prev_throttle": self.prev_throttle,
+            "prev_steering": self.prev_steering
+        }
 
         self.prev_lidar = self.current_lidar
-        
+
 ############# Updates the reward ###############
         # collision info is necessary to compute reward
         collision_info = self.client.simGetCollisionInfo()
         crash = collision_info.has_collided
-        
+
         reward = 0
         if crash:
-            reward =-100
-            
-            
-        elif self.car_state.speed <=1: # Lets force the car to move
+            reward = -100
+
+        elif self.car_state.speed <= 1:  # Lets force the car to move
             reward = -0.1
 
-        if gate_passed : 
+        if gate_passed:
             reward += 50
             print("gate_passed")
-        
+
         self.total_reward = self.total_reward + reward
-        
-    
-        
+
         if crash:
-            self.done=True
+            self.done = True
             print("Crash occured")
             print("Episode reward : " + str(self.total_reward) + 2*'\n')
-        
-    
+
     # displays ( or not ) the lidar observation
         if self.is_rendered:
             self.render()
 
-
         return observation, reward, self.done, info
-
-
-
-
-
-
-
-
-
-
 
     def reset(self):
 
         self.client.reset()
 
+        # be careful, the call arguments for quaterninons are x,y,z,w
 
-        # be careful, the call arguments for quaterninons are x,y,z,w 
-        
-
-        
-        Circuit_wrapper1=Circuit_wrapper(self.liste_spawn_point, self.liste_checkpoints_coordonnes, UE_spawn_point=self.UE_spawn_point)
+        Circuit_wrapper1 = Circuit_wrapper(
+            self.liste_spawn_point, self.liste_checkpoints_coordonnes, UE_spawn_point=self.UE_spawn_point)
         spawn_point, theta, self.Circuit1 = Circuit_wrapper1.sample_random_spawn_point()
-        
-        
-        
-        x_val,y_val,z_val = spawn_point.x, spawn_point.y, spawn_point.z
-        
 
-        
+        x_val, y_val, z_val = spawn_point.x, spawn_point.y, spawn_point.z
+
         pose = airsim.Pose()
-        
-        orientation= airsim.Quaternionr (0,0,np.sin(theta/2)*1,np.cos(theta/2))
-        position = airsim.Vector3r ( x_val, y_val, z_val)
-        pose.position=position
-        pose.orientation=orientation
+
+        orientation = airsim.Quaternionr(
+            0, 0, np.sin(theta/2)*1, np.cos(theta/2))
+        position = airsim.Vector3r(x_val, y_val, z_val)
+        pose.position = position
+        pose.orientation = orientation
         self.client.simSetVehiclePose(pose, ignore_collision=True)
-        
+
     ##########
 
         self.throttle = 0
         self.steering = 0
 
         self.done = False
-        
-        self.total_reward=0
-        self.client.simContinueForFrames( 100 ) #let's skip the first frames to inialise lidar and make sure everything is right
-        time.sleep(1)  #the lidar data can take a bit of time before initialisation.
-        
-        current_raw_lidar = convert_lidar_data_to_polar(self.client.getLidarData())
-        self.current_lidar, lidar_error = lidar_formater(current_raw_lidar, self.lidar_size)
+
+        self.total_reward = 0
+        # let's skip the first frames to inialise lidar and make sure everything is right
+        self.client.simContinueForFrames(100)
+        # the lidar data can take a bit of time before initialisation.
+        time.sleep(1)
+
+        current_raw_lidar = convert_lidar_data_to_polar(
+            self.client.getLidarData())
+        self.current_lidar, lidar_error = lidar_formater(
+            current_raw_lidar, self.lidar_size)
         self.prev_lidar = np.copy(self.current_lidar)
-        
-        
+
         print("reset")
 
         self.prev_throttle = np.array([0])
         self.prev_steering = np.array([0])
-        
+
         if lidar_error:
-            observation = { # dummy observation, the sim will end anyway
-            "current_lidar" : self.current_lidar,
-            "prev_lidar"    : self.prev_lidar,
-            "prev_throttle" : self.prev_throttle,
-            "prev_steering" : self.prev_steering
+            observation = {  # dummy observation, the sim will end anyway
+                "current_lidar": self.current_lidar,
+                "prev_lidar": self.prev_lidar,
+                "prev_throttle": self.prev_throttle,
+                "prev_steering": self.prev_steering
             }
-            
-            
-            
-            print("Caution, no point was observed by the lidar, the vehicule may be escaping: reseting sim")
-            self.done=True # Alas, Done cannot be returned by init, but step() will take care of ending the sim
-        
-        
-        if self.random_reverse :
+
+            print(
+                "Caution, no point was observed by the lidar, the vehicule may be escaping: reseting sim")
+            # Alas, Done cannot be returned by init, but step() will take care of ending the sim
+            self.done = True
+
+        if self.random_reverse:
             self.reversed_world = random.choice([False, True])
-            
-        if self.reversed_world :
-            self.current_lidar[:,0]*= -1
+
+        if self.reversed_world:
+            self.current_lidar[:, 0] *= -1
             self.current_lidar = self.current_lidar[::-1]
-            self.prev_lidar[:,0]*= -1
+            self.prev_lidar[:, 0] *= -1
             self.prev_lidar = self.current_lidar[::-1]
 
-
         observation = {
-            "current_lidar" : self.current_lidar,
-            "prev_lidar"    : self.prev_lidar,
-            "prev_throttle" : self.prev_throttle,
-            "prev_steering" : self.prev_steering
-            }
+            "current_lidar": self.current_lidar,
+            "prev_lidar": self.prev_lidar,
+            "prev_throttle": self.prev_throttle,
+            "prev_steering": self.prev_steering
+        }
 
         return observation  # reward, done, info can't be included
-
-
-
-
-
-
 
     def render(self, mode='human'):
         if not self.is_rendered:
             fig = plt.figure()
             self.ax = fig.add_subplot(projection='polar')
             self.is_rendered = True
-            
+
         self.ax.clear()
-        T=self.current_lidar[:,0]
-        R=self.current_lidar[:,1]
-        self.ax.scatter(T,R)
+        T = self.current_lidar[:, 0]
+        R = self.current_lidar[:, 1]
+        self.ax.scatter(T, R)
         plt.pause(0.01)
         plt.draw()
-        
+
         ########### Image ###############
         responses = self.client.simGetImages([
-        airsim.ImageRequest("Camera1", airsim.ImageType.Scene, False, False)], "MyVehicle")  #scene vision image in uncompressed RGB array
+            airsim.ImageRequest("Camera1", airsim.ImageType.Scene, False, False)], "MyVehicle")  # scene vision image in uncompressed RGB array
         response = responses[0]
-    
+
         # get numpy array
-        img1d = np.frombuffer(response.image_data_uint8, dtype=np.uint8) 
-        
+        img1d = np.frombuffer(response.image_data_uint8, dtype=np.uint8)
+
         # reshape array to 4 channel image array H X W X 4
         img_rgb = img1d.reshape(response.height, response.width, 3)
-        
+
         cv2.imshow("image", img_rgb)
-        
-        
 
-    def close (self):
-         self.client.simPause(False)
-         self.client.enableApiControl(False)
-         
-
+    def close(self):
+        self.client.simPause(False)
+        self.client.enableApiControl(False)
 
     def spawn_points_checker(self, wait_time=1):
         self.close()
-        i=0
+        i = 0
         for spawn_point in self.liste_spawn_point:
             print("Spawn : " + str(i)+'\n')
             theta_m = spawn_point.theta_min
-            theta_M = spawn_point.theta_max            
-            x_val,y_val,z_val = spawn_point.x, spawn_point.y, spawn_point.z
-        
+            theta_M = spawn_point.theta_max
+            x_val, y_val, z_val = spawn_point.x, spawn_point.y, spawn_point.z
 
             pose = airsim.Pose()
             print('\tTheta min = '+str(theta_m))
-            orientation= airsim.Quaternionr (0,0,np.sin(theta_m/2)*1,np.cos(theta_m/2))
-            position = airsim.Vector3r ( x_val, y_val, z_val)
-            pose.position=position
-            pose.orientation=orientation
+            orientation = airsim.Quaternionr(
+                0, 0, np.sin(theta_m/2)*1, np.cos(theta_m/2))
+            position = airsim.Vector3r(x_val, y_val, z_val)
+            pose.position = position
+            pose.orientation = orientation
             self.client.simSetVehiclePose(pose, ignore_collision=True)
             time.sleep(wait_time)
-            
+
             print('\tTheta max = '+str(theta_M))
-            orientation= airsim.Quaternionr (0,0,np.sin(theta_M/2)*1,np.cos(theta_M/2))
-            position = airsim.Vector3r ( x_val, y_val, z_val)
-            pose.position=position
-            pose.orientation=orientation
+            orientation = airsim.Quaternionr(
+                0, 0, np.sin(theta_M/2)*1, np.cos(theta_M/2))
+            position = airsim.Vector3r(x_val, y_val, z_val)
+            pose.position = position
+            pose.orientation = orientation
             self.client.simSetVehiclePose(pose, ignore_collision=True)
             time.sleep(wait_time)
-            i+=1
-           
+            i += 1
+
+
 class DiscreteAirSimEnv(gym.Env):
     """Custom AirSim Environment Discrete action space that follows gym interface"""
 
-    def __init__(self, client, lidar_size, dt, ClockSpeed,UE_spawn_point,
+    def __init__(self, client, lidar_size, dt, ClockSpeed, UE_spawn_point,
                  liste_checkpoints_coordinates, liste_spawn_point,
                  is_rendered=False, random_reverse=False):
         """
-        
+
 
         Parameters
         ----------
@@ -1221,7 +1171,7 @@ class DiscreteAirSimEnv(gym.Env):
         random_reverse : boolean
             whether or not the the observations and action should randomly be reversed.
             Strongly advised for training
-        
+
 
         Returns
         -------
@@ -1229,333 +1179,291 @@ class DiscreteAirSimEnv(gym.Env):
 
         """
         super(DiscreteAirSimEnv, self).__init__()
-        
-		# Define action and observation space
-		# They must be gym.spaces objects
-		# Example when using discrete actions:
-            
-        self.client=client
+
+        # Define action and observation space
+        # They must be gym.spaces objects
+        # Example when using discrete actions:
+
+        self.client = client
         self.car_controls = airsim.CarControls()
-        self.car_state = client.getCarState() 
+        self.car_state = client.getCarState()
         # car_state is an AirSim object that contains informations that are not
-        # obtainable in real experiments. Therefore, it cannot be used as a 
+        # obtainable in real experiments. Therefore, it cannot be used as a
         # MDP object. However, it is useful for computing the reward
-        
-        
-        self.is_rendered=is_rendered
+
+        self.is_rendered = is_rendered
         self.dt = dt
         self.ClockSpeed = ClockSpeed
-        self.lidar_size=lidar_size
-        
+        self.lidar_size = lidar_size
+
         self.random_reverse = random_reverse
         self.reversed_world = None
-        
-        self.total_reward=0
-        self.done=False
-        self.step_iterations=0
-        
+
+        self.total_reward = 0
+        self.done = False
+        self.step_iterations = 0
+
         self.UE_spawn_point = UE_spawn_point
         self.liste_checkpoints_coordonnes = liste_checkpoints_coordinates
         self.liste_spawn_point = liste_spawn_point
-        
-        
-        
+
+
 ########## Below are MDP related objects #############
-        
+
         self.action_space = gym.spaces.Discrete(5)
-        
+
         # In this order
         # "steering" -> 0 = full left; 1 = middle left ; 2 = straight;
         #                            ; 3 = middle right; 4 = full right
-        
-        self.steering_arg_to_steering = {0:-0.5 , 1:-0.25 , 2:0, 3:0.25, 4:0.5}
-        
-		 #Example for using image as input (channel-first; channel-last also works):
-             
-        low =np.zeros((lidar_size,2), dtype=np.float32)
-        high=np.zeros((lidar_size,2), dtype=np.float32)
-        
-        low[:,0]=-np.pi
-        low[:,1]=0
-        
-        high[:,0]=np.pi
-        high[:,1]=np.inf
-        
+
+        self.steering_arg_to_steering = {
+            0: -0.5, 1: -0.25, 2: 0, 3: 0.25, 4: 0.5}
+
+        # Example for using image as input (channel-first; channel-last also works):
+
+        low = np.zeros((lidar_size, 2), dtype=np.float32)
+        high = np.zeros((lidar_size, 2), dtype=np.float32)
+
+        low[:, 0] = -np.pi
+        low[:, 1] = 0
+
+        high[:, 0] = np.pi
+        high[:, 1] = np.inf
+
         self.observation_space = gym.spaces.Dict(spaces={
-            "current_lidar" : gym.spaces.Box(low=low, high=high, shape=(lidar_size,2), dtype=np.float32), # the format is [angle , radius]
-            "prev_lidar"    : gym.spaces.Box(low=low, high=high, shape=(lidar_size,2), dtype=np.float32),
-            
+            # the format is [angle , radius]
+            "current_lidar": gym.spaces.Box(low=low, high=high, shape=(lidar_size, 2), dtype=np.float32),
+            "prev_lidar": gym.spaces.Box(low=low, high=high, shape=(lidar_size, 2), dtype=np.float32),
+
             "prev_steering": gym.spaces.Box(low=-0.5, high=+0.5, shape=(1,))
-            })
-        
-  
-        
-        
-        
-        
-        
-        
-        
-        
+        })
+
     def step(self, action):
-        info={} #Just a debugging feature here
-        
-############ The actions are extracted from the "action" argument
-        steering_arg = int(action)     
-        
+        info = {}  # Just a debugging feature here
+
+# The actions are extracted from the "action" argument
+        steering_arg = int(action)
 
         self.car_controls.throttle = 0.5
         self.car_controls.steering = self.steering_arg_to_steering[steering_arg]
-        
+
         if self.reversed_world:
-            self.car_controls.steering*= -1
+            self.car_controls.steering *= -1
 
         self.client.setCarControls(self.car_controls)
-        
 
-        
     # Now that everything is good and proper, let's run  AirSim a bit
         self.client.simPause(False)
-        time.sleep(self.dt/self.ClockSpeed) #TODO a dedicated thread may be more efficient
+        # TODO a dedicated thread may be more efficient
+        time.sleep(self.dt/self.ClockSpeed)
         self.client.simPause(True)
-        
 
     # Get the state from AirSim
         self.car_state = self.client.getCarState()
-        
+
         self.prev_steering = np.array([self.car_controls.steering])
-        
+
         position = self.car_state.kinematics_estimated.position
-        gate_passed, finished_race = self.Circuit1.cycle_tick(position.x_val, position.y_val) #updating the checkpoint situation
+        gate_passed, finished_race = self.Circuit1.cycle_tick(
+            position.x_val, position.y_val)  # updating the checkpoint situation
 
 
-
-    
 ############ extracts the observation ################
-        current_raw_lidar = convert_lidar_data_to_polar(self.client.getLidarData())
-        
-        self.current_lidar, lidar_error = lidar_formater(current_raw_lidar, target_lidar_size=self.lidar_size)
+        current_raw_lidar = convert_lidar_data_to_polar(
+            self.client.getLidarData())
+
+        self.current_lidar, lidar_error = lidar_formater(
+            current_raw_lidar, target_lidar_size=self.lidar_size)
 ########### Error killswitch, in case the car is going rogue !#########
-        if lidar_error or self.done: #self.done can never be true at this point unless the lidar was corrupted in reset() 
-            observation = { #dummy observation, save the sim !
-            "current_lidar" : self.current_lidar, 
-            "prev_lidar"   : self.prev_lidar,
-            "prev_steering" : self.prev_steering
+        if lidar_error or self.done:  # self.done can never be true at this point unless the lidar was corrupted in reset()
+            observation = {  # dummy observation, save the sim !
+                "current_lidar": self.current_lidar,
+                "prev_lidar": self.prev_lidar,
+                "prev_steering": self.prev_steering
             }
-            print("Caution, no point was observed by the lidar, the vehicule may be escaping: reseting sim")
-            return observation, 0, True, {"Lidar error":True}
-        
-        
-        
+            print(
+                "Caution, no point was observed by the lidar, the vehicule may be escaping: reseting sim")
+            return observation, 0, True, {"Lidar error": True}
+
+
 ########## Reversing the world for data augmentation ##########################
         if self.reversed_world:
-            self.current_lidar[:,0]*=-1
+            self.current_lidar[:, 0] *= -1
             self.current_lidar = self.current_lidar[::-1]
 ######### Observation ############################
         observation = {
-            "current_lidar" : self.current_lidar, 
-            "prev_lidar"   : self.prev_lidar,
-            "prev_steering" : self.prev_steering
-            }
+            "current_lidar": self.current_lidar,
+            "prev_lidar": self.prev_lidar,
+            "prev_steering": self.prev_steering
+        }
 
         self.prev_lidar = self.current_lidar
-        
+
 ############# Updates the reward ###############
         # collision info is necessary to compute reward
         collision_info = self.client.simGetCollisionInfo()
         crash = collision_info.has_collided
-        
+
         reward = 0
         if crash:
-            reward =-100
-            
-            
-        elif self.car_state.speed <=1: # Lets force the car to move
+            reward = -100
+
+        elif self.car_state.speed <= 1:  # Lets force the car to move
             reward = -0.1
 
-        if gate_passed : 
+        if gate_passed:
             reward += 50
             print("gate_passed")
-        
+
         self.total_reward = self.total_reward + reward
-        
-    
-        
+
         if crash:
-            self.done=True
+            self.done = True
             print("Crash occured")
             print("Episode reward : " + str(self.total_reward) + 2*'\n')
-        
-    
+
     # displays ( or not ) the lidar observation
         if self.is_rendered:
             self.render()
 
-
         return observation, reward, self.done, info
-
-
-
-
-
-
-
-
-
-
 
     def reset(self):
 
         self.client.reset()
 
+        # be careful, the call arguments for quaterninons are x,y,z,w
 
-        # be careful, the call arguments for quaterninons are x,y,z,w 
-        
-
-        
-        Circuit_wrapper1=Circuit_wrapper(self.liste_spawn_point, self.liste_checkpoints_coordonnes, UE_spawn_point=self.UE_spawn_point)
+        Circuit_wrapper1 = Circuit_wrapper(
+            self.liste_spawn_point, self.liste_checkpoints_coordonnes, UE_spawn_point=self.UE_spawn_point)
         spawn_point, theta, self.Circuit1 = Circuit_wrapper1.sample_random_spawn_point()
-        
-        
-        
-        x_val,y_val,z_val = spawn_point.x, spawn_point.y, spawn_point.z
-        
 
-        
+        x_val, y_val, z_val = spawn_point.x, spawn_point.y, spawn_point.z
+
         pose = airsim.Pose()
-        
-        orientation= airsim.Quaternionr (0,0,np.sin(theta/2)*1,np.cos(theta/2))
-        position = airsim.Vector3r ( x_val, y_val, z_val)
-        pose.position=position
-        pose.orientation=orientation
+
+        orientation = airsim.Quaternionr(
+            0, 0, np.sin(theta/2)*1, np.cos(theta/2))
+        position = airsim.Vector3r(x_val, y_val, z_val)
+        pose.position = position
+        pose.orientation = orientation
         self.client.simSetVehiclePose(pose, ignore_collision=True)
-        
+
     ##########
 
         self.throttle = 0
         self.steering = 0
 
         self.done = False
-        
-        self.total_reward=0
-        self.client.simContinueForFrames( 100 ) #let's skip the first frames to inialise lidar and make sure everything is right
-        time.sleep(1)  #the lidar data can take a bit of time before initialisation.
-        
-        current_raw_lidar = convert_lidar_data_to_polar(self.client.getLidarData())
-        self.current_lidar, lidar_error = lidar_formater(current_raw_lidar, self.lidar_size)
+
+        self.total_reward = 0
+        # let's skip the first frames to inialise lidar and make sure everything is right
+        self.client.simContinueForFrames(100)
+        # the lidar data can take a bit of time before initialisation.
+        time.sleep(1)
+
+        current_raw_lidar = convert_lidar_data_to_polar(
+            self.client.getLidarData())
+        self.current_lidar, lidar_error = lidar_formater(
+            current_raw_lidar, self.lidar_size)
         self.prev_lidar = np.copy(self.current_lidar)
-            
-        
+
         print("reset")
 
         self.prev_steering = np.array([0])
-        
+
         if lidar_error:
-            observation = { # dummy observation, the sim will end anyway
-            "current_lidar" : self.current_lidar,
-            "prev_lidar"    : self.prev_lidar,
-            "prev_steering" : self.prev_steering
+            observation = {  # dummy observation, the sim will end anyway
+                "current_lidar": self.current_lidar,
+                "prev_lidar": self.prev_lidar,
+                "prev_steering": self.prev_steering
             }
-            
-            
-            
-            print("Caution, no point was observed by the lidar, the vehicule may be escaping: reseting sim")
-            self.done=True # Alas, Done cannot be returned by init, but step() will take care of ending the sim
-        
-        if self.random_reverse :
+
+            print(
+                "Caution, no point was observed by the lidar, the vehicule may be escaping: reseting sim")
+            # Alas, Done cannot be returned by init, but step() will take care of ending the sim
+            self.done = True
+
+        if self.random_reverse:
             self.reversed_world = random.choice([False, True])
-            
-        if self.reversed_world :
-            self.current_lidar*= -1
+
+        if self.reversed_world:
+            self.current_lidar *= -1
             self.current_lidar = self.current_lidar[::-1]
-            self.prev_lidar*= -1
+            self.prev_lidar *= -1
             self.prev_lidar = self.current_lidar[::-1]
 
-
-
         observation = {
-            "current_lidar" : self.current_lidar,
-            "prev_lidar"    : self.prev_lidar,
-            "prev_steering" : self.prev_steering
-            }
+            "current_lidar": self.current_lidar,
+            "prev_lidar": self.prev_lidar,
+            "prev_steering": self.prev_steering
+        }
 
         return observation  # reward, done, info can't be included
-
-
-
-
-
-
 
     def render(self, mode='human'):
         if not self.is_rendered:
             fig = plt.figure()
             self.ax = fig.add_subplot(projection='polar')
             self.is_rendered = True
-            
+
         self.ax.clear()
-        T=self.current_lidar[:,0]
-        R=self.current_lidar[:,1]
-        self.ax.scatter(T,R)
+        T = self.current_lidar[:, 0]
+        R = self.current_lidar[:, 1]
+        self.ax.scatter(T, R)
         plt.pause(0.01)
         plt.draw()
-        
+
         ########### Image ###############
         responses = self.client.simGetImages([
-        airsim.ImageRequest("Camera1", airsim.ImageType.Scene, False, False)], "MyVehicle")  #scene vision image in uncompressed RGB array
+            airsim.ImageRequest("Camera1", airsim.ImageType.Scene, False, False)], "MyVehicle")  # scene vision image in uncompressed RGB array
         response = responses[0]
-    
+
         # get numpy array
-        img1d = np.frombuffer(response.image_data_uint8, dtype=np.uint8) 
-        
+        img1d = np.frombuffer(response.image_data_uint8, dtype=np.uint8)
+
         # reshape array to 4 channel image array H X W X 4
         img_rgb = img1d.reshape(response.height, response.width, 3)
-        
+
         cv2.imshow("image", img_rgb)
-        
-        
 
-    def close (self):
-         self.client.simPause(False)
-         self.client.enableApiControl(False)
-         
-
+    def close(self):
+        self.client.simPause(False)
+        self.client.enableApiControl(False)
 
     def spawn_points_checker(self, wait_time=1):
         self.close()
-        i=0
+        i = 0
         for spawn_point in self.liste_spawn_point:
             print("Spawn : " + str(i)+'\n')
             theta_m = spawn_point.theta_min
-            theta_M = spawn_point.theta_max            
-            x_val,y_val,z_val = spawn_point.x, spawn_point.y, spawn_point.z
-        
+            theta_M = spawn_point.theta_max
+            x_val, y_val, z_val = spawn_point.x, spawn_point.y, spawn_point.z
 
             pose = airsim.Pose()
             print('\tTheta min = '+str(theta_m))
-            orientation= airsim.Quaternionr (0,0,np.sin(theta_m/2)*1,np.cos(theta_m/2))
-            position = airsim.Vector3r ( x_val, y_val, z_val)
-            pose.position=position
-            pose.orientation=orientation
+            orientation = airsim.Quaternionr(
+                0, 0, np.sin(theta_m/2)*1, np.cos(theta_m/2))
+            position = airsim.Vector3r(x_val, y_val, z_val)
+            pose.position = position
+            pose.orientation = orientation
             self.client.simSetVehiclePose(pose, ignore_collision=True)
             time.sleep(wait_time)
-            
+
             print('\tTheta max = '+str(theta_M))
-            orientation= airsim.Quaternionr (0,0,np.sin(theta_M/2)*1,np.cos(theta_M/2))
-            position = airsim.Vector3r ( x_val, y_val, z_val)
-            pose.position=position
-            pose.orientation=orientation
+            orientation = airsim.Quaternionr(
+                0, 0, np.sin(theta_M/2)*1, np.cos(theta_M/2))
+            position = airsim.Vector3r(x_val, y_val, z_val)
+            pose.position = position
+            pose.orientation = orientation
             self.client.simSetVehiclePose(pose, ignore_collision=True)
             time.sleep(wait_time)
-            i+=1            
-            
-
-
+            i += 1
 
 
 def denormalize_action(action):
-    '''
-    
+    """
+
 
     Parameters
     ----------
@@ -1567,15 +1475,14 @@ def denormalize_action(action):
     denormalized_action : np.array
         An AirSim type action, where throttle is in [-1, 1] and steering in [-0.5, 0.5]
 
-    '''
-    denormalized_action = (action - np.array([0.5, 0.5]) ) * np.array([2,1])
+    """
+    denormalized_action = (action - np.array([0.5, 0.5])) * np.array([2, 1])
     return denormalized_action
-                                                                   
-    
+
 
 def normalize_action(action):
-    '''
-    
+    """
+
 
     Parameters
     ----------
@@ -1587,12 +1494,6 @@ def normalize_action(action):
     normalize_action : TYPE
         A normalised action, where both throttle and steering are represented in [0,1]
 
-    '''
+    """
     normalized_action = action * np.array([0.5, 1]) + np.array([0.5, 0.5])
     return normalized_action
-
-
-    
-    
-    
-
