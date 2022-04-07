@@ -307,7 +307,9 @@ class Concat(nn.Module):
  ### Action normalisation
  When checking your custom environment with the <code>check_env()</code> function of stable baselines 3 (which is by the way very useful, thank you for implementing that !), you may be welcomed with a warning message saying that your observations and actions are not normalized, which may be a problem. We have already talked of the normalisation of observation, which is automatic for images, and can be easily included in the preprocessing layer. I have however found no similar feature when it comes to action. To be fair, I was never working with normalized observations and it never caused any problem, but for actions it's another story. SAC authors really insist on the fact that their method is robust to non-normalized action, and in practice working with a steering command included in [-0.5, 0.5] and a throttle in [-1, 1] worked perfectly fine. However, less robust methods such as TD3, DDPG or TRPO are really sensitive to that, and I have observed that the action was systematically draged towards saturations with these methods, if there is no normalization. Therefore, make sure to normalize your action in [0.1]
  
+ ### Reset randomisation
  
+ I have observed that an agent can easily become biased by the ratio of left turns VS rigth turns. It is actually pretty hard to create a reacing track that balances the two, so to prevent that I have implemented a "random reverse" attribute. Everytimes the agent spawns, there 50% chance the world will be reversed, meaning that the lidar that will be fed to agent will be revsersed, and the action he will, chose will be reversed before being fed to AirSim. We have found that it can help a lot to avoid such biases.
  
  ### Actor and critic networks
  
