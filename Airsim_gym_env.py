@@ -39,9 +39,12 @@ def sparse_sample(X, sample_size):
         raise ValueError(
             """"The lidar to sample is smaller than the wanted sample_size
             (size {} against target size {}). Maybe you should use
-            array_augmentation() instad""". format(N, sample_size))
+            array_augmentation() instead""".format(
+                N, sample_size
+            )
+        )
 
-    Indexes = np.linspace(0, N-1, sample_size)
+    Indexes = np.linspace(0, N - 1, sample_size)
     return X[Indexes.astype(np.int32)]
 
 
@@ -53,7 +56,7 @@ def array_augmentation(A, final_size):
     A : numpy array
         Lidar data
     final_size : int
-        The desired finals ize
+        The desired finals size
 
     Returns
     -------
@@ -66,9 +69,12 @@ def array_augmentation(A, final_size):
         raise ValueError(
             """"The lidar data to augmentate is bigger than the target size
             (size {} against target size {}). Maybe you should use
-            sparse_sample() instad""". format(N, final_size))
-    m = final_size-N
-    B1 = np.ones((m, 2))*A[0]
+            sparse_sample() instead""".format(
+                N, final_size
+            )
+        )
+    m = final_size - N
+    B1 = np.ones((m, 2)) * A[0]
     B = np.concatenate((B1, A[0:, :]), axis=0)
     return B
 
@@ -83,19 +89,19 @@ def lidar_formater(lidar_data, target_lidar_size, angle_sort=True):
 
     Parameters
     ----------
-    lidar_data : TYPE numpy array
+    lidar_data : numpy array
         Numy array reprensenting the polar converted raw lidar data received.
-    target_lidar_size : TYPE int
+    target_lidar_size : int
         Number of points desired for output
-    angle_srot : TYPe boolean
+    angle_srot : boolean
         Whether or not the values should be ordered by growing theta (may
         impact performances if the target lidar size is very big)
 
     Returns
     -------
-    new_lidar_data : TYPE numpy array
+    new_lidar_data : numpy array
         size adjusted new lidar data
-    conversion_error: TYPE boolean
+    conversion_error: boolean
         whether or not an error occured
 
     """
@@ -120,9 +126,18 @@ def lidar_formater(lidar_data, target_lidar_size, angle_sort=True):
 class BoxAirSimEnv(gym.Env):
     """Custom AirSim Environment with Box action space following gym interface"""
 
-    def __init__(self, client, lidar_size, dt, ClockSpeed, UE_spawn_point,
-                 liste_checkpoints_coordinates, liste_spawn_point, is_rendered=False,
-                 random_reverse=False):
+    def __init__(
+        self,
+        client,
+        lidar_size,
+        dt,
+        ClockSpeed,
+        UE_spawn_point,
+        liste_checkpoints_coordinates,
+        liste_spawn_point,
+        is_rendered=False,
+        random_reverse=False,
+    ):
         """
 
 
@@ -154,11 +169,11 @@ class BoxAirSimEnv(gym.Env):
         """
         super(BoxAirSimEnv, self).__init__()
 
-        # Define action and observation space
-
+        # __________ Init value __________________
         self.client = client
         self.car_controls = airsim.CarControls()
         self.car_state = client.getCarState()
+
         # car_state is an AirSim object that contains informations that are not
         # obtainable in real experiments. Therefore, it cannot be used as a
         # MDP object. However, it is useful for computing the reward
@@ -168,7 +183,6 @@ class BoxAirSimEnv(gym.Env):
         self.ClockSpeed = ClockSpeed
         self.lidar_size = lidar_size
         self.random_reverse = random_reverse
-        self.reversed_world = None
 
         self.total_reward = 0
         self.done = False
@@ -177,14 +191,13 @@ class BoxAirSimEnv(gym.Env):
         self.liste_checkpoints_coordonnes = liste_checkpoints_coordinates
         self.liste_spawn_point = liste_spawn_point
 
+        # __________ Below are MDP related objects ___________
 
-########## Below are MDP related objects #############
-
-        self.action_space = gym.spaces.Box(low=np.array([0, 0], dtype=np.float32),
-                                           high=np.array(
-                                               [1,  1], dtype=np.float32),
-                                           dtype=np.float32
-                                           )
+        self.action_space = gym.spaces.Box(
+            low=np.array([0, 0], dtype=np.float32),
+            high=np.array([1, 1], dtype=np.float32),
+            dtype=np.float32,
+        )
 
         # In this order
         # "throttle"
@@ -201,19 +214,28 @@ class BoxAirSimEnv(gym.Env):
         high[:, 0] = np.pi
         high[:, 1] = np.inf
 
-        self.observation_space = gym.spaces.Dict(spaces={
-            # the format is [angle , radius]
-            "current_lidar": gym.spaces.Box(low=low, high=high, shape=(lidar_size, 2), dtype=np.float32),
-            "prev_lidar": gym.spaces.Box(low=low, high=high, shape=(lidar_size, 2), dtype=np.float32),
+        self.observation_space = gym.spaces.Dict(
+            spaces={
+                # the format is [angle , radius]
+                "current_lidar": gym.spaces.Box(
+                    low=low, high=high, shape=(lidar_size, 2), dtype=np.float32
+                ),
+                "prev_lidar": gym.spaces.Box(
+                    low=low, high=high, shape=(lidar_size, 2), dtype=np.float32
+                ),
+                "prev_throttle": gym.spaces.Box(low=0, high=1, shape=(1,)),
+                "prev_steering": gym.spaces.Box(low=0, high=1, shape=(1,)),
+            }
+        )
 
-            "prev_throttle": gym.spaces.Box(low=0, high=1, shape=(1,)),
-            "prev_steering": gym.spaces.Box(low=0, high=1, shape=(1,))
-        })
+        self.reversed_world = None
+        self.prev_throttle = None
+        self.prev_steering = None
 
     def step(self, action):
         info = {}  # Just a debugging feature here
 
-# The actions are extracted from the "action" argument
+        # The actions are extracted from the "action" argument
 
         denormalized_action = denormalize_action(action)
         self.car_controls.throttle = float(denormalized_action[0])
@@ -224,13 +246,13 @@ class BoxAirSimEnv(gym.Env):
 
         self.client.setCarControls(self.car_controls)
 
-    # Now that everything is good and proper, let's run  AirSim a bit
+        # Now that everything is good and proper, let's run  AirSim a bit
         self.client.simPause(False)
         # TODO a dedicated thread may be more efficient
-        time.sleep(self.dt/self.ClockSpeed)
+        time.sleep(self.dt / self.ClockSpeed)
         self.client.simPause(True)
 
-    # Get the state from AirSim
+        # Get the state from AirSim
         self.car_state = self.client.getCarState()
 
         self.prev_throttle = np.array([action[0]])
@@ -238,43 +260,46 @@ class BoxAirSimEnv(gym.Env):
 
         position = self.car_state.kinematics_estimated.position
         gate_passed, finished_race = self.Circuit1.cycle_tick(
-            position.x_val, position.y_val)  # updating the checkpoint situation
+            position.x_val, position.y_val
+        )  # updating the checkpoint situation
 
-
-############ extracts the observation ################
-        current_raw_lidar = convert_lidar_data_to_polar(
-            self.client.getLidarData())
+        # __________ extracts the observation _____________________________________
+        current_raw_lidar = convert_lidar_data_to_polar(self.client.getLidarData())
 
         self.current_lidar, lidar_error = lidar_formater(
-            current_raw_lidar, target_lidar_size=self.lidar_size)
-########### Error killswitch, in case the car is going rogue !#########
-        if lidar_error or self.done:  # self.done can never be true at this point unless the lidar was corrupted in reset()
+            current_raw_lidar, target_lidar_size=self.lidar_size
+        )
+        # ______________ Error killswitch, in case the car is going rogue ! ______________
+        if (
+            lidar_error or self.done
+        ):  # self.done can never be true at this point unless the lidar was corrupted in reset()
             observation = {  # dummy observation, save the sim !
                 "current_lidar": self.current_lidar,
                 "prev_lidar": self.prev_lidar,
                 "prev_throttle": self.prev_throttle,
-                "prev_steering": self.prev_steering
+                "prev_steering": self.prev_steering,
             }
             print(
-                "Caution, no point was observed by the lidar, the vehicule may be escaping: reseting sim")
+                """Caution, no point was observed by the lidar, the vehicule may be escaping:
+                    reseting sim"""
+            )
             return observation, 0, True, {"Lidar error": True}
 
-
-########## Reversing the world for data augmentation ##########################
+        # __________ Reversing the world for data augmentation ________________
         if self.reversed_world:
             self.current_lidar[:, 0] *= -1
             self.current_lidar = self.current_lidar[::-1]
-######### Observation ############################
+        # ____________ Observation __________________
         observation = {
             "current_lidar": self.current_lidar,
             "prev_lidar": self.prev_lidar,
             "prev_throttle": self.prev_throttle,
-            "prev_steering": self.prev_steering
+            "prev_steering": self.prev_steering,
         }
 
         self.prev_lidar = self.current_lidar
 
-############# Updates the reward ###############
+        # ________________ Updates the reward ________________
         # collision info is necessary to compute reward
         collision_info = self.client.simGetCollisionInfo()
         crash = collision_info.has_collided
@@ -295,9 +320,9 @@ class BoxAirSimEnv(gym.Env):
         if crash:
             self.done = True
             print("Crash occured")
-            print("Episode reward : " + str(self.total_reward) + 2*'\n')
+            print("Episode reward : " + str(self.total_reward) + 2 * "\n")
 
-    # displays ( or not ) the lidar observation
+        # displays ( or not ) the lidar observation
         if self.is_rendered:
             self.render()
 
@@ -309,7 +334,10 @@ class BoxAirSimEnv(gym.Env):
 
         # Picking a random spawn
         Circuit_wrapper1 = Circuit_wrapper(
-            self.liste_spawn_point, self.liste_checkpoints_coordonnes, UE_spawn_point=self.UE_spawn_point)
+            self.liste_spawn_point,
+            self.liste_checkpoints_coordonnes,
+            UE_spawn_point=self.UE_spawn_point,
+        )
         spawn_point, theta, self.Circuit1 = Circuit_wrapper1.sample_random_spawn_point()
 
         # be careful, the call arguments for quaterninons are x,y,z,w
@@ -317,14 +345,13 @@ class BoxAirSimEnv(gym.Env):
 
         pose = airsim.Pose()
 
-        orientation = airsim.Quaternionr(
-            0, 0, np.sin(theta/2)*1, np.cos(theta/2))
+        orientation = airsim.Quaternionr(0, 0, np.sin(theta / 2) * 1, np.cos(theta / 2))
         position = airsim.Vector3r(x_val, y_val, z_val)
         pose.position = position
         pose.orientation = orientation
         self.client.simSetVehiclePose(pose, ignore_collision=True)
 
-    ##########
+        ##########
 
         self.throttle = 0
         self.steering = 0
@@ -337,10 +364,10 @@ class BoxAirSimEnv(gym.Env):
         # the lidar data can take a bit of time before initialisation.
         time.sleep(1)
 
-        current_raw_lidar = convert_lidar_data_to_polar(
-            self.client.getLidarData())
+        current_raw_lidar = convert_lidar_data_to_polar(self.client.getLidarData())
         self.current_lidar, lidar_error = lidar_formater(
-            current_raw_lidar, self.lidar_size)
+            current_raw_lidar, self.lidar_size
+        )
         self.prev_lidar = np.copy(self.current_lidar)
 
         print("reset")
@@ -355,11 +382,13 @@ class BoxAirSimEnv(gym.Env):
                 "current_lidar": self.current_lidar,
                 "prev_lidar": self.prev_lidar,
                 "prev_throttle": self.prev_throttle,
-                "prev_steering": self.prev_steering
+                "prev_steering": self.prev_steering,
             }
 
             print(
-                "Caution, no point was observed by the lidar, the vehicule may be escaping: reseting sim")
+                """"Caution, no point was observed by the lidar, the vehicule may be escaping:
+                    reseting sim"""
+            )
             # Alas, Done cannot be returned by init, but step() will take care of ending the sim
             self.done = True
 
@@ -376,15 +405,15 @@ class BoxAirSimEnv(gym.Env):
             "current_lidar": self.current_lidar,
             "prev_lidar": self.prev_lidar,
             "prev_throttle": self.prev_throttle,
-            "prev_steering": self.prev_steering
+            "prev_steering": self.prev_steering,
         }
 
         return observation  # reward, done, info can't be included
 
-    def render(self, mode='human'):
+    def render(self, mode="human"):
         if not self.is_rendered:
             fig = plt.figure()
-            self.ax = fig.add_subplot(projection='polar')
+            self.ax = fig.add_subplot(projection="polar")
             self.is_rendered = True
 
         self.ax.clear()
@@ -394,9 +423,11 @@ class BoxAirSimEnv(gym.Env):
         plt.pause(0.01)
         plt.draw()
 
-        ########### Image ###############
-        responses = self.client.simGetImages([
-            airsim.ImageRequest("Camera1", airsim.ImageType.Scene, False, False)], "MyVehicle")  # scene vision image in uncompressed RGB array
+        # ____________ Image ___________________
+        responses = self.client.simGetImages(
+            [airsim.ImageRequest("Camera1", airsim.ImageType.Scene, False, False)],
+            "MyVehicle",
+        )  # scene vision image in uncompressed RGB array
         response = responses[0]
 
         # get numpy array
@@ -415,24 +446,26 @@ class BoxAirSimEnv(gym.Env):
         self.close()
         i = 0
         for spawn_point in self.liste_spawn_point:
-            print("Spawn : " + str(i)+'\n')
+            print("Spawn : " + str(i) + "\n")
             theta_m = spawn_point.theta_min
             theta_M = spawn_point.theta_max
             x_val, y_val, z_val = spawn_point.x, spawn_point.y, spawn_point.z
 
             pose = airsim.Pose()
-            print('\tTheta min = '+str(theta_m))
+            print("\tTheta min = " + str(theta_m))
             orientation = airsim.Quaternionr(
-                0, 0, np.sin(theta_m/2)*1, np.cos(theta_m/2))
+                0, 0, np.sin(theta_m / 2) * 1, np.cos(theta_m / 2)
+            )
             position = airsim.Vector3r(x_val, y_val, z_val)
             pose.position = position
             pose.orientation = orientation
             self.client.simSetVehiclePose(pose, ignore_collision=True)
             time.sleep(wait_time)
 
-            print('\tTheta max = '+str(theta_M))
+            print("\tTheta max = " + str(theta_M))
             orientation = airsim.Quaternionr(
-                0, 0, np.sin(theta_M/2)*1, np.cos(theta_M/2))
+                0, 0, np.sin(theta_M / 2) * 1, np.cos(theta_M / 2)
+            )
             position = airsim.Vector3r(x_val, y_val, z_val)
             pose.position = position
             pose.orientation = orientation
@@ -444,9 +477,18 @@ class BoxAirSimEnv(gym.Env):
 class BoxAirSimEnv_5_memory(gym.Env):
     """Custom AirSim Environment with Box action space that follows gym interface"""
 
-    def __init__(self, client, lidar_size, dt, ClockSpeed, UE_spawn_point,
-                 liste_checkpoints_coordinates, liste_spawn_point, is_rendered=False,
-                 random_reverse=False):
+    def __init__(
+        self,
+        client,
+        lidar_size,
+        dt,
+        ClockSpeed,
+        UE_spawn_point,
+        liste_checkpoints_coordinates,
+        liste_spawn_point,
+        is_rendered=False,
+        random_reverse=False,
+    ):
         """
 
 
@@ -501,21 +543,21 @@ class BoxAirSimEnv_5_memory(gym.Env):
         self.liste_checkpoints_coordonnes = liste_checkpoints_coordinates
         self.liste_spawn_point = liste_spawn_point
 
+        # ____________ Below are MDP related objects ______________
 
-########## Below are MDP related objects #############
+        self.action_space = gym.spaces.Box(
+            low=np.array([0, 0], dtype=np.float32),
+            high=np.array([1, 1], dtype=np.float32),
+            dtype=np.float32,
+        )
 
-        self.action_space = gym.spaces.Box(low=np.array([0, 0],
-                                                        dtype=np.float32),
-                                           high=np.array(
-                                               [1,  1], dtype=np.float32),
-                                           dtype=np.float32
-                                           )
-
-        # In this order
-        # "throttle"
-        # "steering"
-        # both actions are normalized in [0,1]
-        # Example for using image as input (channel-first; channel-last also works):
+        # =============================================================================
+        #         In this order
+        #         "throttle"
+        #         "steering"
+        #         both actions are normalized in [0,1]
+        #         Example for using image as input (channel-first; channel-last also works):
+        # =============================================================================
 
         low = np.zeros((lidar_size, 2), dtype=np.float32)
         high = np.zeros((lidar_size, 2), dtype=np.float32)
@@ -526,23 +568,36 @@ class BoxAirSimEnv_5_memory(gym.Env):
         high[:, 0] = np.pi
         high[:, 1] = np.inf
 
-        self.observation_space = gym.spaces.Dict(spaces={
-            # the format is [angle , radius]
-            "current_lidar": gym.spaces.Box(low=low, high=high, shape=(lidar_size, 2), dtype=np.float32),
-            "prev_lidar1": gym.spaces.Box(low=low, high=high, shape=(lidar_size, 2), dtype=np.float32),
-            "prev_lidar2": gym.spaces.Box(low=low, high=high, shape=(lidar_size, 2), dtype=np.float32),
-            "prev_lidar3": gym.spaces.Box(low=low, high=high, shape=(lidar_size, 2), dtype=np.float32),
-            "prev_lidar4": gym.spaces.Box(low=low, high=high, shape=(lidar_size, 2), dtype=np.float32),
-            "prev_lidar5": gym.spaces.Box(low=low, high=high, shape=(lidar_size, 2), dtype=np.float32),
-
-            "prev_throttle": gym.spaces.Box(low=0, high=1, shape=(1,)),
-            "prev_steering": gym.spaces.Box(low=0, high=1, shape=(1,))
-        })
+        self.observation_space = gym.spaces.Dict(
+            spaces={
+                # the format is [angle , radius]
+                "current_lidar": gym.spaces.Box(
+                    low=low, high=high, shape=(lidar_size, 2), dtype=np.float32
+                ),
+                "prev_lidar1": gym.spaces.Box(
+                    low=low, high=high, shape=(lidar_size, 2), dtype=np.float32
+                ),
+                "prev_lidar2": gym.spaces.Box(
+                    low=low, high=high, shape=(lidar_size, 2), dtype=np.float32
+                ),
+                "prev_lidar3": gym.spaces.Box(
+                    low=low, high=high, shape=(lidar_size, 2), dtype=np.float32
+                ),
+                "prev_lidar4": gym.spaces.Box(
+                    low=low, high=high, shape=(lidar_size, 2), dtype=np.float32
+                ),
+                "prev_lidar5": gym.spaces.Box(
+                    low=low, high=high, shape=(lidar_size, 2), dtype=np.float32
+                ),
+                "prev_throttle": gym.spaces.Box(low=0, high=1, shape=(1,)),
+                "prev_steering": gym.spaces.Box(low=0, high=1, shape=(1,)),
+            }
+        )
 
     def step(self, action):
         info = {}  # Just a debugging feature here
 
-# The actions are extracted from the "action" argument
+        # The actions are extracted from the "action" argument
 
         denormalized_action = denormalize_action(action)
         self.car_controls.throttle = float(denormalized_action[0])
@@ -553,13 +608,13 @@ class BoxAirSimEnv_5_memory(gym.Env):
 
         self.client.setCarControls(self.car_controls)
 
-    # Now that everything is good and proper, let's run  AirSim a bit
+        # Now that everything is good and proper, let's run  AirSim a bit
         self.client.simPause(False)
         # TODO a dedicated thread may be more efficient
-        time.sleep(self.dt/self.ClockSpeed)
+        time.sleep(self.dt / self.ClockSpeed)
         self.client.simPause(True)
 
-    # Get the state from AirSim
+        # Get the state from AirSim
         self.car_state = self.client.getCarState()
 
         self.prev_throttle = np.array([action[0]])
@@ -567,18 +622,19 @@ class BoxAirSimEnv_5_memory(gym.Env):
 
         position = self.car_state.kinematics_estimated.position
         gate_passed, finished_race = self.Circuit1.cycle_tick(
-            position.x_val, position.y_val)  # updating the checkpoint situation
+            position.x_val, position.y_val
+        )  # updating the checkpoint situation
 
-
-############ extracts the observation ################
-        current_raw_lidar = convert_lidar_data_to_polar(
-            self.client.getLidarData())
-
+        # __________ extracts the observation ______________________
+        current_raw_lidar = convert_lidar_data_to_polar(self.client.getLidarData())
         self.current_lidar, lidar_error = lidar_formater(
-            current_raw_lidar, target_lidar_size=self.lidar_size)
+            current_raw_lidar, target_lidar_size=self.lidar_size
+        )
 
-########### Error killswitch, in case the car is going rogue !#########
-        if lidar_error or self.done:  # self.done can never be true at this point unless the lidar was corrupted in reset()
+        # __________ Error killswitch, in case the car is going rogue ! _____________
+        if (
+            lidar_error or self.done
+        ):  # self.done can never be true at this point unless the lidar was corrupted in reset()
             observation = {  # dummy observation, save the sim !
                 "current_lidar": self.current_lidar,
                 "prev_lidar1": self.prev_lidar1,
@@ -587,13 +643,15 @@ class BoxAirSimEnv_5_memory(gym.Env):
                 "prev_lidar4": self.prev_lidar4,
                 "prev_lidar5": self.prev_lidar5,
                 "prev_throttle": self.prev_throttle,
-                "prev_steering": self.prev_steering
+                "prev_steering": self.prev_steering,
             }
             print(
-                "Caution, no point was observed by the lidar, the vehicule may be escaping: reseting sim")
+                """"Caution, no point was observed by the lidar, the vehicule may be escaping:
+                    reseting sim"""
+            )
             return observation, 0, True, {"Lidar error": True}
 
-#############################################
+        # ______________________________________________
 
         if self.reversed_world:
             self.current_lidar[:, 0] *= -1
@@ -616,9 +674,8 @@ class BoxAirSimEnv_5_memory(gym.Env):
             "prev_lidar3": self.prev_lidar3,
             "prev_lidar4": self.prev_lidar4,
             "prev_lidar5": self.prev_lidar5,
-
             "prev_throttle": self.prev_throttle,
-            "prev_steering": self.prev_steering
+            "prev_steering": self.prev_steering,
         }
         self.prev_lidar5 = self.prev_lidar4
         self.prev_lidar4 = self.prev_lidar3
@@ -626,7 +683,7 @@ class BoxAirSimEnv_5_memory(gym.Env):
         self.prev_lidar2 = self.prev_lidar1
         self.prev_lidar1 = self.current_lidar
 
-############# Updates the reward ###############
+        # ___________ Updates the reward ____________________
         # collision info is necessary to compute reward
         collision_info = self.client.simGetCollisionInfo()
         crash = collision_info.has_collided
@@ -647,9 +704,9 @@ class BoxAirSimEnv_5_memory(gym.Env):
         if crash:
             self.done = True
             print("Crash occured")
-            print("Episode reward : " + str(self.total_reward) + 2*'\n')
+            print("Episode reward : " + str(self.total_reward) + 2 * "\n")
 
-    # displays ( or not ) the lidar observation
+        # displays ( or not ) the lidar observation
         if self.is_rendered:
             self.render()
 
@@ -662,21 +719,23 @@ class BoxAirSimEnv_5_memory(gym.Env):
         # be careful, the call arguments for quaterninons are x,y,z,w
 
         Circuit_wrapper1 = Circuit_wrapper(
-            self.liste_spawn_point, self.liste_checkpoints_coordonnes, UE_spawn_point=self.UE_spawn_point)
+            self.liste_spawn_point,
+            self.liste_checkpoints_coordonnes,
+            UE_spawn_point=self.UE_spawn_point,
+        )
         spawn_point, theta, self.Circuit1 = Circuit_wrapper1.sample_random_spawn_point()
 
         x_val, y_val, z_val = spawn_point.x, spawn_point.y, spawn_point.z
 
         pose = airsim.Pose()
 
-        orientation = airsim.Quaternionr(
-            0, 0, np.sin(theta/2)*1, np.cos(theta/2))
+        orientation = airsim.Quaternionr(0, 0, np.sin(theta / 2) * 1, np.cos(theta / 2))
         position = airsim.Vector3r(x_val, y_val, z_val)
         pose.position = position
         pose.orientation = orientation
         self.client.simSetVehiclePose(pose, ignore_collision=True)
 
-    ##########
+        ##########
 
         self.throttle = 0
         self.steering = 0
@@ -689,10 +748,10 @@ class BoxAirSimEnv_5_memory(gym.Env):
         # the lidar data can take a bit of time before initialisation.
         time.sleep(1)
 
-        current_raw_lidar = convert_lidar_data_to_polar(
-            self.client.getLidarData())
+        current_raw_lidar = convert_lidar_data_to_polar(self.client.getLidarData())
         self.current_lidar, lidar_error = lidar_formater(
-            current_raw_lidar, self.lidar_size)
+            current_raw_lidar, self.lidar_size
+        )
 
         self.prev_lidar1 = np.copy(self.current_lidar)
         self.prev_lidar2 = np.copy(self.current_lidar)
@@ -715,13 +774,14 @@ class BoxAirSimEnv_5_memory(gym.Env):
                 "prev_lidar3": self.prev_lidar3,
                 "prev_lidar4": self.prev_lidar4,
                 "prev_lidar5": self.prev_lidar5,
-
                 "prev_throttle": self.prev_throttle,
-                "prev_steering": self.prev_steering
+                "prev_steering": self.prev_steering,
             }
 
             print(
-                "Caution, no point was observed by the lidar, the vehicule may be escaping: reseting sim")
+                """"Caution, no point was observed by the lidar, the vehicule may be escaping:
+                    reseting sim"""
+            )
             # Alas, Done cannot be returned by init, but step() will take care of ending the sim
             self.done = True
 
@@ -749,17 +809,16 @@ class BoxAirSimEnv_5_memory(gym.Env):
             "prev_lidar3": self.prev_lidar3,
             "prev_lidar4": self.prev_lidar4,
             "prev_lidar5": self.prev_lidar5,
-
             "prev_throttle": self.prev_throttle,
-            "prev_steering": self.prev_steering
+            "prev_steering": self.prev_steering,
         }
 
         return observation  # reward, done, info can't be included
 
-    def render(self, mode='human'):
+    def render(self, mode="human"):
         if not self.is_rendered:
             fig = plt.figure()
-            self.ax = fig.add_subplot(projection='polar')
+            self.ax = fig.add_subplot(projection="polar")
             self.is_rendered = True
 
         self.ax.clear()
@@ -769,9 +828,11 @@ class BoxAirSimEnv_5_memory(gym.Env):
         plt.pause(0.01)
         plt.draw()
 
-        ########### Image ###############
-        responses = self.client.simGetImages([
-            airsim.ImageRequest("Camera1", airsim.ImageType.Scene, False, False)], "MyVehicle")  # scene vision image in uncompressed RGB array
+        # ________________ Image ___________________________________________________
+        responses = self.client.simGetImages(
+            [airsim.ImageRequest("Camera1", airsim.ImageType.Scene, False, False)],
+            "MyVehicle",
+        )  # scene vision image in uncompressed RGB array
         response = responses[0]
 
         # get numpy array
@@ -790,24 +851,26 @@ class BoxAirSimEnv_5_memory(gym.Env):
         self.close()
         i = 0
         for spawn_point in self.liste_spawn_point:
-            print("Spawn : " + str(i)+'\n')
+            print("Spawn : " + str(i) + "\n")
             theta_m = spawn_point.theta_min
             theta_M = spawn_point.theta_max
             x_val, y_val, z_val = spawn_point.x, spawn_point.y, spawn_point.z
 
             pose = airsim.Pose()
-            print('\tTheta min = '+str(theta_m))
+            print("\tTheta min = " + str(theta_m))
             orientation = airsim.Quaternionr(
-                0, 0, np.sin(theta_m/2)*1, np.cos(theta_m/2))
+                0, 0, np.sin(theta_m / 2) * 1, np.cos(theta_m / 2)
+            )
             position = airsim.Vector3r(x_val, y_val, z_val)
             pose.position = position
             pose.orientation = orientation
             self.client.simSetVehiclePose(pose, ignore_collision=True)
             time.sleep(wait_time)
 
-            print('\tTheta max = '+str(theta_M))
+            print("\tTheta max = " + str(theta_M))
             orientation = airsim.Quaternionr(
-                0, 0, np.sin(theta_M/2)*1, np.cos(theta_M/2))
+                0, 0, np.sin(theta_M / 2) * 1, np.cos(theta_M / 2)
+            )
             position = airsim.Vector3r(x_val, y_val, z_val)
             pose.position = position
             pose.orientation = orientation
@@ -819,9 +882,18 @@ class BoxAirSimEnv_5_memory(gym.Env):
 class MultiDiscreteAirSimEnv(gym.Env):
     """Custom AirSim Environment MultiDiscrete action space that follows gym interface."""
 
-    def __init__(self, client, lidar_size, dt, ClockSpeed, UE_spawn_point,
-                 liste_checkpoints_coordinates, liste_spawn_point,
-                 is_rendered=False, random_reverse=False):
+    def __init__(
+        self,
+        client,
+        lidar_size,
+        dt,
+        ClockSpeed,
+        UE_spawn_point,
+        liste_checkpoints_coordinates,
+        liste_spawn_point,
+        is_rendered=False,
+        random_reverse=False,
+    ):
         """
 
 
@@ -879,8 +951,7 @@ class MultiDiscreteAirSimEnv(gym.Env):
         self.liste_checkpoints_coordonnes = liste_checkpoints_coordinates
         self.liste_spawn_point = liste_spawn_point
 
-
-########## Below are MDP related objects #############
+        # _____________ Below are MDP related objects _______________________
 
         self.action_space = gym.spaces.MultiDiscrete([3, 5])
 
@@ -890,8 +961,7 @@ class MultiDiscreteAirSimEnv(gym.Env):
         #                            ; 3 = middle right; 4 = full right
 
         self.throttle_arg_to_throttle = {0: 1, 1: 0, 2: -1}
-        self.steering_arg_to_steering = {
-            0: -0.5, 1: -0.25, 2: 0, 3: 0.25, 4: 0.5}
+        self.steering_arg_to_steering = {0: -0.5, 1: -0.25, 2: 0, 3: 0.25, 4: 0.5}
 
         # Example for using image as input (channel-first; channel-last also works):
 
@@ -904,19 +974,24 @@ class MultiDiscreteAirSimEnv(gym.Env):
         high[:, 0] = np.pi
         high[:, 1] = np.inf
 
-        self.observation_space = gym.spaces.Dict(spaces={
-            # the format is [angle , radius]
-            "current_lidar": gym.spaces.Box(low=low, high=high, shape=(lidar_size, 2), dtype=np.float32),
-            "prev_lidar": gym.spaces.Box(low=low, high=high, shape=(lidar_size, 2), dtype=np.float32),
-
-            "prev_throttle": gym.spaces.Box(low=-1, high=1, shape=(1,)),
-            "prev_steering": gym.spaces.Box(low=-0.5, high=+0.5, shape=(1,))
-        })
+        self.observation_space = gym.spaces.Dict(
+            spaces={
+                # the format is [angle , radius]
+                "current_lidar": gym.spaces.Box(
+                    low=low, high=high, shape=(lidar_size, 2), dtype=np.float32
+                ),
+                "prev_lidar": gym.spaces.Box(
+                    low=low, high=high, shape=(lidar_size, 2), dtype=np.float32
+                ),
+                "prev_throttle": gym.spaces.Box(low=-1, high=1, shape=(1,)),
+                "prev_steering": gym.spaces.Box(low=-0.5, high=+0.5, shape=(1,)),
+            }
+        )
 
     def step(self, action):
         info = {}  # Just a debugging feature here
 
-# The actions are extracted from the "action" argument
+        # The actions are extracted from the "action" argument
         throttle_arg = int(action[0])
         steering_arg = int(action[1])
 
@@ -928,13 +1003,13 @@ class MultiDiscreteAirSimEnv(gym.Env):
 
         self.client.setCarControls(self.car_controls)
 
-    # Now that everything is good and proper, let's run  AirSim a bit
+        # Now that everything is good and proper, let's run  AirSim a bit
         self.client.simPause(False)
         # TODO a dedicated thread may be more efficient
-        time.sleep(self.dt/self.ClockSpeed)
+        time.sleep(self.dt / self.ClockSpeed)
         self.client.simPause(True)
 
-    # Get the state from AirSim
+        # Get the state from AirSim
         self.car_state = self.client.getCarState()
 
         self.prev_throttle = np.array([self.car_controls.throttle])
@@ -942,43 +1017,46 @@ class MultiDiscreteAirSimEnv(gym.Env):
 
         position = self.car_state.kinematics_estimated.position
         gate_passed, finished_race = self.Circuit1.cycle_tick(
-            position.x_val, position.y_val)  # updating the checkpoint situation
+            position.x_val, position.y_val
+        )  # updating the checkpoint situation
 
-
-############ extracts the observation ################
-        current_raw_lidar = convert_lidar_data_to_polar(
-            self.client.getLidarData())
+        # _______________ extracts the observation ____________________
+        current_raw_lidar = convert_lidar_data_to_polar(self.client.getLidarData())
 
         self.current_lidar, lidar_error = lidar_formater(
-            current_raw_lidar, target_lidar_size=self.lidar_size)
-########### Error killswitch, in case the car is going rogue !#########
-        if lidar_error or self.done:  # self.done can never be true at this point unless the lidar was corrupted in reset()
+            current_raw_lidar, target_lidar_size=self.lidar_size
+        )
+        # _____________ Error killswitch, in case the car is going rogue ! ________________
+        if (
+            lidar_error or self.done
+        ):  # self.done can never be true at this point unless the lidar was corrupted in reset()
             observation = {  # dummy observation, save the sim !
                 "current_lidar": self.current_lidar,
                 "prev_lidar": self.prev_lidar,
                 "prev_throttle": self.prev_throttle,
-                "prev_steering": self.prev_steering
+                "prev_steering": self.prev_steering,
             }
             print(
-                "Caution, no point was observed by the lidar, the vehicule may be escaping: reseting sim")
+                """"Caution, no point was observed by the lidar, the vehicule may be escaping:
+                    reseting sim"""
+            )
             return observation, 0, True, {"Lidar error": True}
 
-
-########## Reversing the world for data augmentation ##########################
+        # __________ Reversing the world for data augmentation ________________
         if self.reversed_world:
             self.current_lidar[:, 0] *= -1
             self.current_lidar = self.current_lidar[::-1]
-######### Observation ############################
+        # ___________ Observation _____________________________
         observation = {
             "current_lidar": self.current_lidar,
             "prev_lidar": self.prev_lidar,
             "prev_throttle": self.prev_throttle,
-            "prev_steering": self.prev_steering
+            "prev_steering": self.prev_steering,
         }
 
         self.prev_lidar = self.current_lidar
 
-############# Updates the reward ###############
+        # _______ Updates the reward ______________________________
         # collision info is necessary to compute reward
         collision_info = self.client.simGetCollisionInfo()
         crash = collision_info.has_collided
@@ -999,9 +1077,9 @@ class MultiDiscreteAirSimEnv(gym.Env):
         if crash:
             self.done = True
             print("Crash occured")
-            print("Episode reward : " + str(self.total_reward) + 2*'\n')
+            print("Episode reward : " + str(self.total_reward) + 2 * "\n")
 
-    # displays ( or not ) the lidar observation
+        # displays ( or not ) the lidar observation
         if self.is_rendered:
             self.render()
 
@@ -1014,21 +1092,23 @@ class MultiDiscreteAirSimEnv(gym.Env):
         # be careful, the call arguments for quaterninons are x,y,z,w
 
         Circuit_wrapper1 = Circuit_wrapper(
-            self.liste_spawn_point, self.liste_checkpoints_coordonnes, UE_spawn_point=self.UE_spawn_point)
+            self.liste_spawn_point,
+            self.liste_checkpoints_coordonnes,
+            UE_spawn_point=self.UE_spawn_point,
+        )
         spawn_point, theta, self.Circuit1 = Circuit_wrapper1.sample_random_spawn_point()
 
         x_val, y_val, z_val = spawn_point.x, spawn_point.y, spawn_point.z
 
         pose = airsim.Pose()
 
-        orientation = airsim.Quaternionr(
-            0, 0, np.sin(theta/2)*1, np.cos(theta/2))
+        orientation = airsim.Quaternionr(0, 0, np.sin(theta / 2) * 1, np.cos(theta / 2))
         position = airsim.Vector3r(x_val, y_val, z_val)
         pose.position = position
         pose.orientation = orientation
         self.client.simSetVehiclePose(pose, ignore_collision=True)
 
-    ##########
+        # ____________________________________________
 
         self.throttle = 0
         self.steering = 0
@@ -1041,10 +1121,10 @@ class MultiDiscreteAirSimEnv(gym.Env):
         # the lidar data can take a bit of time before initialisation.
         time.sleep(1)
 
-        current_raw_lidar = convert_lidar_data_to_polar(
-            self.client.getLidarData())
+        current_raw_lidar = convert_lidar_data_to_polar(self.client.getLidarData())
         self.current_lidar, lidar_error = lidar_formater(
-            current_raw_lidar, self.lidar_size)
+            current_raw_lidar, self.lidar_size
+        )
         self.prev_lidar = np.copy(self.current_lidar)
 
         print("reset")
@@ -1057,11 +1137,13 @@ class MultiDiscreteAirSimEnv(gym.Env):
                 "current_lidar": self.current_lidar,
                 "prev_lidar": self.prev_lidar,
                 "prev_throttle": self.prev_throttle,
-                "prev_steering": self.prev_steering
+                "prev_steering": self.prev_steering,
             }
 
             print(
-                "Caution, no point was observed by the lidar, the vehicule may be escaping: reseting sim")
+                """"Caution, no point was observed by the lidar, the vehicule may be escaping:
+                    reseting sim"""
+            )
             # Alas, Done cannot be returned by init, but step() will take care of ending the sim
             self.done = True
 
@@ -1078,15 +1160,15 @@ class MultiDiscreteAirSimEnv(gym.Env):
             "current_lidar": self.current_lidar,
             "prev_lidar": self.prev_lidar,
             "prev_throttle": self.prev_throttle,
-            "prev_steering": self.prev_steering
+            "prev_steering": self.prev_steering,
         }
 
         return observation  # reward, done, info can't be included
 
-    def render(self, mode='human'):
+    def render(self, mode="human"):
         if not self.is_rendered:
             fig = plt.figure()
-            self.ax = fig.add_subplot(projection='polar')
+            self.ax = fig.add_subplot(projection="polar")
             self.is_rendered = True
 
         self.ax.clear()
@@ -1096,9 +1178,11 @@ class MultiDiscreteAirSimEnv(gym.Env):
         plt.pause(0.01)
         plt.draw()
 
-        ########### Image ###############
-        responses = self.client.simGetImages([
-            airsim.ImageRequest("Camera1", airsim.ImageType.Scene, False, False)], "MyVehicle")  # scene vision image in uncompressed RGB array
+        # ______________ Image _______________________
+        responses = self.client.simGetImages(
+            [airsim.ImageRequest("Camera1", airsim.ImageType.Scene, False, False)],
+            "MyVehicle",
+        )  # scene vision image in uncompressed RGB array
         response = responses[0]
 
         # get numpy array
@@ -1117,24 +1201,26 @@ class MultiDiscreteAirSimEnv(gym.Env):
         self.close()
         i = 0
         for spawn_point in self.liste_spawn_point:
-            print("Spawn : " + str(i)+'\n')
+            print("Spawn : " + str(i) + "\n")
             theta_m = spawn_point.theta_min
             theta_M = spawn_point.theta_max
             x_val, y_val, z_val = spawn_point.x, spawn_point.y, spawn_point.z
 
             pose = airsim.Pose()
-            print('\tTheta min = '+str(theta_m))
+            print("\tTheta min = " + str(theta_m))
             orientation = airsim.Quaternionr(
-                0, 0, np.sin(theta_m/2)*1, np.cos(theta_m/2))
+                0, 0, np.sin(theta_m / 2) * 1, np.cos(theta_m / 2)
+            )
             position = airsim.Vector3r(x_val, y_val, z_val)
             pose.position = position
             pose.orientation = orientation
             self.client.simSetVehiclePose(pose, ignore_collision=True)
             time.sleep(wait_time)
 
-            print('\tTheta max = '+str(theta_M))
+            print("\tTheta max = " + str(theta_M))
             orientation = airsim.Quaternionr(
-                0, 0, np.sin(theta_M/2)*1, np.cos(theta_M/2))
+                0, 0, np.sin(theta_M / 2) * 1, np.cos(theta_M / 2)
+            )
             position = airsim.Vector3r(x_val, y_val, z_val)
             pose.position = position
             pose.orientation = orientation
@@ -1146,9 +1232,18 @@ class MultiDiscreteAirSimEnv(gym.Env):
 class DiscreteAirSimEnv(gym.Env):
     """Custom AirSim Environment Discrete action space that follows gym interface"""
 
-    def __init__(self, client, lidar_size, dt, ClockSpeed, UE_spawn_point,
-                 liste_checkpoints_coordinates, liste_spawn_point,
-                 is_rendered=False, random_reverse=False):
+    def __init__(
+        self,
+        client,
+        lidar_size,
+        dt,
+        ClockSpeed,
+        UE_spawn_point,
+        liste_checkpoints_coordinates,
+        liste_spawn_point,
+        is_rendered=False,
+        random_reverse=False,
+    ):
         """
 
 
@@ -1207,8 +1302,7 @@ class DiscreteAirSimEnv(gym.Env):
         self.liste_checkpoints_coordonnes = liste_checkpoints_coordinates
         self.liste_spawn_point = liste_spawn_point
 
-
-########## Below are MDP related objects #############
+        # ___________ Below are MDP related objects _____________________________
 
         self.action_space = gym.spaces.Discrete(5)
 
@@ -1216,8 +1310,7 @@ class DiscreteAirSimEnv(gym.Env):
         # "steering" -> 0 = full left; 1 = middle left ; 2 = straight;
         #                            ; 3 = middle right; 4 = full right
 
-        self.steering_arg_to_steering = {
-            0: -0.5, 1: -0.25, 2: 0, 3: 0.25, 4: 0.5}
+        self.steering_arg_to_steering = {0: -0.5, 1: -0.25, 2: 0, 3: 0.25, 4: 0.5}
 
         # Example for using image as input (channel-first; channel-last also works):
 
@@ -1230,18 +1323,23 @@ class DiscreteAirSimEnv(gym.Env):
         high[:, 0] = np.pi
         high[:, 1] = np.inf
 
-        self.observation_space = gym.spaces.Dict(spaces={
-            # the format is [angle , radius]
-            "current_lidar": gym.spaces.Box(low=low, high=high, shape=(lidar_size, 2), dtype=np.float32),
-            "prev_lidar": gym.spaces.Box(low=low, high=high, shape=(lidar_size, 2), dtype=np.float32),
-
-            "prev_steering": gym.spaces.Box(low=-0.5, high=+0.5, shape=(1,))
-        })
+        self.observation_space = gym.spaces.Dict(
+            spaces={
+                # the format is [angle , radius]
+                "current_lidar": gym.spaces.Box(
+                    low=low, high=high, shape=(lidar_size, 2), dtype=np.float32
+                ),
+                "prev_lidar": gym.spaces.Box(
+                    low=low, high=high, shape=(lidar_size, 2), dtype=np.float32
+                ),
+                "prev_steering": gym.spaces.Box(low=-0.5, high=+0.5, shape=(1,)),
+            }
+        )
 
     def step(self, action):
         info = {}  # Just a debugging feature here
 
-# The actions are extracted from the "action" argument
+        # The actions are extracted from the "action" argument
         steering_arg = int(action)
 
         self.car_controls.throttle = 0.5
@@ -1252,54 +1350,57 @@ class DiscreteAirSimEnv(gym.Env):
 
         self.client.setCarControls(self.car_controls)
 
-    # Now that everything is good and proper, let's run  AirSim a bit
+        # Now that everything is good and proper, let's run  AirSim a bit
         self.client.simPause(False)
         # TODO a dedicated thread may be more efficient
-        time.sleep(self.dt/self.ClockSpeed)
+        time.sleep(self.dt / self.ClockSpeed)
         self.client.simPause(True)
 
-    # Get the state from AirSim
+        # Get the state from AirSim
         self.car_state = self.client.getCarState()
 
         self.prev_steering = np.array([self.car_controls.steering])
 
         position = self.car_state.kinematics_estimated.position
         gate_passed, finished_race = self.Circuit1.cycle_tick(
-            position.x_val, position.y_val)  # updating the checkpoint situation
+            position.x_val, position.y_val
+        )  # updating the checkpoint situation
 
-
-############ extracts the observation ################
-        current_raw_lidar = convert_lidar_data_to_polar(
-            self.client.getLidarData())
+        # __________________ extracts the observation __________________________
+        current_raw_lidar = convert_lidar_data_to_polar(self.client.getLidarData())
 
         self.current_lidar, lidar_error = lidar_formater(
-            current_raw_lidar, target_lidar_size=self.lidar_size)
-########### Error killswitch, in case the car is going rogue !#########
-        if lidar_error or self.done:  # self.done can never be true at this point unless the lidar was corrupted in reset()
+            current_raw_lidar, target_lidar_size=self.lidar_size
+        )
+        # _____________ Error killswitch, in case the car is going rogue ! __________________
+        if (
+            lidar_error or self.done
+        ):  # self.done can never be true at this point unless the lidar was corrupted in reset()
             observation = {  # dummy observation, save the sim !
                 "current_lidar": self.current_lidar,
                 "prev_lidar": self.prev_lidar,
-                "prev_steering": self.prev_steering
+                "prev_steering": self.prev_steering,
             }
             print(
-                "Caution, no point was observed by the lidar, the vehicule may be escaping: reseting sim")
+                """"Caution, no point was observed by the lidar, the vehicule may be escaping:
+                    reseting sim"""
+            )
             return observation, 0, True, {"Lidar error": True}
 
-
-########## Reversing the world for data augmentation ##########################
+        # ___________ Reversing the world for data augmentation _________________
         if self.reversed_world:
             self.current_lidar[:, 0] *= -1
             self.current_lidar = self.current_lidar[::-1]
-######### Observation ############################
+        # _________ Observation ________________________________
         observation = {
             "current_lidar": self.current_lidar,
             "prev_lidar": self.prev_lidar,
-            "prev_steering": self.prev_steering
+            "prev_steering": self.prev_steering,
         }
 
         self.prev_lidar = self.current_lidar
 
-############# Updates the reward ###############
+        # _________ Updates the reward __________________________
         # collision info is necessary to compute reward
         collision_info = self.client.simGetCollisionInfo()
         crash = collision_info.has_collided
@@ -1320,9 +1421,9 @@ class DiscreteAirSimEnv(gym.Env):
         if crash:
             self.done = True
             print("Crash occured")
-            print("Episode reward : " + str(self.total_reward) + 2*'\n')
+            print("Episode reward : " + str(self.total_reward) + 2 * "\n")
 
-    # displays ( or not ) the lidar observation
+        # displays ( or not ) the lidar observation
         if self.is_rendered:
             self.render()
 
@@ -1335,21 +1436,23 @@ class DiscreteAirSimEnv(gym.Env):
         # be careful, the call arguments for quaterninons are x,y,z,w
 
         Circuit_wrapper1 = Circuit_wrapper(
-            self.liste_spawn_point, self.liste_checkpoints_coordonnes, UE_spawn_point=self.UE_spawn_point)
+            self.liste_spawn_point,
+            self.liste_checkpoints_coordonnes,
+            UE_spawn_point=self.UE_spawn_point,
+        )
         spawn_point, theta, self.Circuit1 = Circuit_wrapper1.sample_random_spawn_point()
 
         x_val, y_val, z_val = spawn_point.x, spawn_point.y, spawn_point.z
 
         pose = airsim.Pose()
 
-        orientation = airsim.Quaternionr(
-            0, 0, np.sin(theta/2)*1, np.cos(theta/2))
+        orientation = airsim.Quaternionr(0, 0, np.sin(theta / 2) * 1, np.cos(theta / 2))
         position = airsim.Vector3r(x_val, y_val, z_val)
         pose.position = position
         pose.orientation = orientation
         self.client.simSetVehiclePose(pose, ignore_collision=True)
 
-    ##########
+        ##########
 
         self.throttle = 0
         self.steering = 0
@@ -1362,10 +1465,10 @@ class DiscreteAirSimEnv(gym.Env):
         # the lidar data can take a bit of time before initialisation.
         time.sleep(1)
 
-        current_raw_lidar = convert_lidar_data_to_polar(
-            self.client.getLidarData())
+        current_raw_lidar = convert_lidar_data_to_polar(self.client.getLidarData())
         self.current_lidar, lidar_error = lidar_formater(
-            current_raw_lidar, self.lidar_size)
+            current_raw_lidar, self.lidar_size
+        )
         self.prev_lidar = np.copy(self.current_lidar)
 
         print("reset")
@@ -1376,11 +1479,13 @@ class DiscreteAirSimEnv(gym.Env):
             observation = {  # dummy observation, the sim will end anyway
                 "current_lidar": self.current_lidar,
                 "prev_lidar": self.prev_lidar,
-                "prev_steering": self.prev_steering
+                "prev_steering": self.prev_steering,
             }
 
             print(
-                "Caution, no point was observed by the lidar, the vehicule may be escaping: reseting sim")
+                """"Caution, no point was observed by the lidar, the vehicule may be escaping:
+                    reseting sim"""
+            )
             # Alas, Done cannot be returned by init, but step() will take care of ending the sim
             self.done = True
 
@@ -1396,15 +1501,15 @@ class DiscreteAirSimEnv(gym.Env):
         observation = {
             "current_lidar": self.current_lidar,
             "prev_lidar": self.prev_lidar,
-            "prev_steering": self.prev_steering
+            "prev_steering": self.prev_steering,
         }
 
         return observation  # reward, done, info can't be included
 
-    def render(self, mode='human'):
+    def render(self, mode="human"):
         if not self.is_rendered:
             fig = plt.figure()
-            self.ax = fig.add_subplot(projection='polar')
+            self.ax = fig.add_subplot(projection="polar")
             self.is_rendered = True
 
         self.ax.clear()
@@ -1414,9 +1519,11 @@ class DiscreteAirSimEnv(gym.Env):
         plt.pause(0.01)
         plt.draw()
 
-        ########### Image ###############
-        responses = self.client.simGetImages([
-            airsim.ImageRequest("Camera1", airsim.ImageType.Scene, False, False)], "MyVehicle")  # scene vision image in uncompressed RGB array
+        # ___________ Image _________________________________
+        responses = self.client.simGetImages(
+            [airsim.ImageRequest("Camera1", airsim.ImageType.Scene, False, False)],
+            "MyVehicle",
+        )  # scene vision image in uncompressed RGB array
         response = responses[0]
 
         # get numpy array
@@ -1435,24 +1542,26 @@ class DiscreteAirSimEnv(gym.Env):
         self.close()
         i = 0
         for spawn_point in self.liste_spawn_point:
-            print("Spawn : " + str(i)+'\n')
+            print("Spawn : " + str(i) + "\n")
             theta_m = spawn_point.theta_min
             theta_M = spawn_point.theta_max
             x_val, y_val, z_val = spawn_point.x, spawn_point.y, spawn_point.z
 
             pose = airsim.Pose()
-            print('\tTheta min = '+str(theta_m))
+            print("\tTheta min = " + str(theta_m))
             orientation = airsim.Quaternionr(
-                0, 0, np.sin(theta_m/2)*1, np.cos(theta_m/2))
+                0, 0, np.sin(theta_m / 2) * 1, np.cos(theta_m / 2)
+            )
             position = airsim.Vector3r(x_val, y_val, z_val)
             pose.position = position
             pose.orientation = orientation
             self.client.simSetVehiclePose(pose, ignore_collision=True)
             time.sleep(wait_time)
 
-            print('\tTheta max = '+str(theta_M))
+            print("\tTheta max = " + str(theta_M))
             orientation = airsim.Quaternionr(
-                0, 0, np.sin(theta_M/2)*1, np.cos(theta_M/2))
+                0, 0, np.sin(theta_M / 2) * 1, np.cos(theta_M / 2)
+            )
             position = airsim.Vector3r(x_val, y_val, z_val)
             pose.position = position
             pose.orientation = orientation
@@ -1462,12 +1571,12 @@ class DiscreteAirSimEnv(gym.Env):
 
 
 def denormalize_action(action):
-    """
+    """ Denormalize the throttle and steering from [0,1]² into [-1, 1]x[-0.5, 0.5] .
 
 
     Parameters
     ----------
-    action : TYPE np.array
+    action : np.array
         A normalised action, where both throttle and steering are represented in [0,1]
 
     Returns
@@ -1481,7 +1590,7 @@ def denormalize_action(action):
 
 
 def normalize_action(action):
-    """
+    """ Normalize throttle and steering from [-1, 1]x[-0.5, 0.5] into [0,1]².
 
 
     Parameters
@@ -1491,7 +1600,7 @@ def normalize_action(action):
 
     Returns
     -------
-    normalize_action : TYPE
+    normalize_action : nummpy array
         A normalised action, where both throttle and steering are represented in [0,1]
 
     """
