@@ -8,6 +8,9 @@ Created on Tue Mar 29 15:51:44 2022
 import numpy as np
 
 
+SCALING_FACTOR = 6.25 / 1000
+
+
 def lidar_sim_to_real(sim_type_lidar):
     """
     Converts simulated lidar type into real lidar type
@@ -26,7 +29,6 @@ def lidar_sim_to_real(sim_type_lidar):
         order and the angle is in mm
 
     """
-    scaling_factor = 6.25 / 1000
     real_type_lidar = np.copy(sim_type_lidar)
 
     # re organising the negative angles into theta >pi
@@ -36,7 +38,7 @@ def lidar_sim_to_real(sim_type_lidar):
     real_type_lidar[:, 0] *= 180 / np.pi
 
     # scaling the distance
-    real_type_lidar[:, 1] /= scaling_factor
+    real_type_lidar[:, 1] /= SCALING_FACTOR
 
     # applying a mirroring on angles
     real_type_lidar[:, 0] = 360 - real_type_lidar[:, 0]
@@ -61,7 +63,6 @@ def lidar_real_to_sim(real_type_lidar):
     sim_type_lidar : TYPE np array([[theta_1, ..., \theta_n], [r_1, ..., r_n]])
         Lidar returned by airsim. theta is betwen -pi and +pi and the radius is in airsim meters
     """
-    scaling_factor = 6.25 / 1000
     sim_type_lidar = np.copy(real_type_lidar)
     # reorganising the theta>180 into theta<0
 
@@ -72,7 +73,7 @@ def lidar_real_to_sim(real_type_lidar):
     sim_type_lidar[:, 0] *= np.pi / 180
 
     # scaling the distance
-    sim_type_lidar[:, 1] *= scaling_factor
+    sim_type_lidar[:, 1] *= SCALING_FACTOR
 
     # mirroring the angles
     sim_type_lidar[:, 0] *= -1
