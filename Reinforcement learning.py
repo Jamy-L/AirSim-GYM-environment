@@ -85,36 +85,19 @@ airsim_env = BoxAirSimEnv_5_memory(
 )
 
 
-models_dir = "P:/Final_benchmark/Training_V2"
-logdir = "P:/Final_benchmark/Training_V2"
+models_dir = "P:/Final_benchmark/Training_V3"
+logdir = "P:/Final_benchmark/Training_V3"
 path = "P:/Replay_buffer/Replay_buffer.pkl"
 
-
-model = SAC.load(
-    "P:/Final_benchmark/Training_V2/1004000",
-    tensorboard_log="P:/Final_benchmark/Training_V2",
-)
-obs = airsim_env.reset()
-airsim_env.render()
-while True:
-    action, _states = model.predict(obs, deterministic=True)
-    obs, reward, done, info = airsim_env.step(action)
-    if done:
-        obs = airsim_env.reset()
-
-#%%
 TIMESTEPS = 1000
 
 
 model = SAC("MultiInputPolicy", airsim_env, verbose=1, tensorboard_log=logdir)
-
 iters = 0
 while True:
     iters = iters + 1
     model.learn(
-        total_timesteps=TIMESTEPS,
-        reset_num_timesteps=False,
-        tb_log_name="SAC_memory_5_jammed_lidar",
+        total_timesteps=TIMESTEPS, reset_num_timesteps=False, tb_log_name="Image",
     )
     model.save(f"{models_dir}/{TIMESTEPS*iters}")
 

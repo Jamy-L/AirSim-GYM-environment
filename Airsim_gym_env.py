@@ -16,10 +16,60 @@ from jamys_toolkit import (
     lidar_formater,
     normalize_action,
     denormalize_action,
+    change_colors,
+    gaussian_noise,
+    random_gaussian_sampling,
 )
 import matplotlib.pyplot as plt
 import cv2
 import random
+
+IMAGE_HEIGHT = 60
+IMAGE_WIDTH = 60
+
+MIN_CONTRAST = 50
+MAX_CONTRAST = 150
+
+MIN_BRIGHTNESS = 150
+MAX_BRIGHTNESS = 400
+
+SIGMA_NOISE = 5
+
+
+def image_augmentation(img, brightness, contrast):
+    """ Apply brighntess and contrast settings, and gaussian noise
+
+    Parameters
+    ----------
+    img : numpy array
+        numpy array. The number of channels does not matter
+    brightness : int
+        The brightness to apply
+    contrast : int
+        The contrast to apply
+
+    Returns
+    -------
+    output : numpy array
+        color adjusted and noised image
+    """
+    color_adjusted_image = change_colors(img, brightness, contrast)
+    output = gaussian_noise(color_adjusted_image, SIGMA_NOISE)
+    return output
+
+
+def sample_image_settings():
+    """ randomly pick a value for brightness and contrast
+
+    Returns
+    -------
+    brightness : int
+    contrast : int
+
+    """
+    brightness = random_gaussian_sampling(xmin=MIN_BRIGHTNESS, xmax=MAX_BRIGHTNESS)
+    contrast = random_gaussian_sampling(xmin=MIN_CONTRAST, xmax=MAX_CONTRAST)
+    return brightness, contrast
 
 
 def proximity_jammer(lidar):
@@ -517,6 +567,12 @@ class BoxAirSimEnv_5_memory(gym.Env):
                 ),
                 "prev_throttle": gym.spaces.Box(low=0, high=1, shape=(1,)),
                 "prev_steering": gym.spaces.Box(low=0, high=1, shape=(1,)),
+                "current_image": gym.spaces.Box(
+                    low=0,
+                    high=255,
+                    shape=(IMAGE_HEIGHT, IMAGE_WIDTH, 3),
+                    dtype=np.uint8,
+                ),
             }
         )
 
@@ -531,10 +587,13 @@ class BoxAirSimEnv_5_memory(gym.Env):
         self.prev_lidar3 = None
         self.prev_lidar4 = None
         self.prev_lidar5 = None
+        self.current_image = None
         self.Circuit1 = None
         self.throttle = None
         self.steering = None
         self.ax = None
+        self.brightness = None
+        self.contrast = None
 
     def step(self, action):
         info = {}  # Just a debugging feature here
@@ -576,6 +635,21 @@ class BoxAirSimEnv_5_memory(gym.Env):
             current_raw_lidar, target_lidar_size=self.lidar_size
         )
 
+        # _________Image part____________
+        responses = self.client.simGetImages(
+            [airsim.ImageRequest("Camera1", airsim.ImageType.Scene, False, False)],
+            "MyVehicle",
+        )  # scene vision image in uncompressed RGB array
+        response = responses[0]
+
+        # get numpy array
+        img1d = np.frombuffer(response.image_data_uint8, dtype=np.uint8)
+
+        # reshape array to 4 channel image array H X W X 4
+        img_rgb = img1d.reshape(response.height, response.width, 3)
+
+        self.current_image = image_augmentation(img_rgb, self.brightness, self.contrast)
+
         # __________ Error killswitch, in case the car is going rogue ! _____________
         if (
             lidar_error or self.done
@@ -589,6 +663,7 @@ class BoxAirSimEnv_5_memory(gym.Env):
                 "prev_lidar5": self.prev_lidar5,
                 "prev_throttle": self.prev_throttle,
                 "prev_steering": self.prev_steering,
+                "current_image": self.current_image,
             }
             print(
                 """"Caution, no point was observed by the lidar, the vehicule may be escaping:
@@ -612,6 +687,8 @@ class BoxAirSimEnv_5_memory(gym.Env):
             self.prev_lidar5[:, 0] *= -1
             self.prev_lidar5 = self.prev_lidar5[::-1]
 
+            self.current_image = np.flip(self.current_image, axis=1)
+
         observation = {
             "current_lidar": self.current_lidar,
             "prev_lidar1": self.prev_lidar1,
@@ -621,6 +698,7 @@ class BoxAirSimEnv_5_memory(gym.Env):
             "prev_lidar5": self.prev_lidar5,
             "prev_throttle": self.prev_throttle,
             "prev_steering": self.prev_steering,
+            "current_image": self.current_image,
         }
         self.prev_lidar5 = self.prev_lidar4
         self.prev_lidar4 = self.prev_lidar3
@@ -698,6 +776,21 @@ class BoxAirSimEnv_5_memory(gym.Env):
             current_raw_lidar, self.lidar_size
         )
 
+        # _________Image part____________
+        responses = self.client.simGetImages(
+            [airsim.ImageRequest("Camera1", airsim.ImageType.Scene, False, False)],
+            "MyVehicle",
+        )  # scene vision image in uncompressed RGB array
+        response = responses[0]
+
+        # get numpy array
+        img1d = np.frombuffer(response.image_data_uint8, dtype=np.uint8)
+
+        # reshape array to 4 channel image array H X W X 4
+        img_rgb = img1d.reshape(response.height, response.width, 3)
+
+        self.current_image = img_rgb
+
         self.prev_lidar1 = np.copy(self.current_lidar)
         self.prev_lidar2 = np.copy(self.current_lidar)
         self.prev_lidar3 = np.copy(self.current_lidar)
@@ -721,6 +814,7 @@ class BoxAirSimEnv_5_memory(gym.Env):
                 "prev_lidar5": self.prev_lidar5,
                 "prev_throttle": self.prev_throttle,
                 "prev_steering": self.prev_steering,
+                "current_image": self.current_image,
             }
 
             print(
@@ -732,6 +826,11 @@ class BoxAirSimEnv_5_memory(gym.Env):
 
         if self.random_reverse:
             self.reversed_world = random.choice([False, True])
+
+        self.brightness, self.contrast = sample_image_settings()
+        self.current_image = image_augmentation(
+            self.current_image, self.brightness, self.contrast
+        )
 
         if self.reversed_world:
             self.current_lidar[:, 0] *= -1
@@ -747,6 +846,8 @@ class BoxAirSimEnv_5_memory(gym.Env):
             self.prev_lidar5[:, 0] *= -1
             self.prev_lidar5 = self.current_lidar[::-1]
 
+            self.current_image = np.flip(self.current_image, axis=1)
+
         observation = {
             "current_lidar": self.current_lidar,
             "prev_lidar1": self.prev_lidar1,
@@ -756,41 +857,32 @@ class BoxAirSimEnv_5_memory(gym.Env):
             "prev_lidar5": self.prev_lidar5,
             "prev_throttle": self.prev_throttle,
             "prev_steering": self.prev_steering,
+            "current_image": self.current_image,
         }
 
         return observation  # reward, done, info can't be included
 
     def render(self, mode="human"):
-        print("rendering")
         if not self.is_rendered:
             fig = plt.figure()
             self.ax = fig.add_subplot(projection="polar")
             self.is_rendered = True
 
         self.ax.clear()
-        T = self.current_lidar[:, 0]
-        R = self.current_lidar[:, 1]
+        T = -self.current_lidar[:, 0]
+        R = self.current_lidar[:, 1]  # plt takes this orientation type
         self.ax.scatter(T, R)
         plt.pause(1e-6)
         plt.draw()
-        print("drawn")
 
-    # =============================================================================
-    #         # ________________ Image ___________________________________________________
-    #         responses = self.client.simGetImages(
-    #             [airsim.ImageRequest("Camera1", airsim.ImageType.Scene, False, False)],
-    #             "MyVehicle",
-    #         )  # scene vision image in uncompressed RGB array
-    #         response = responses[0]
-    #
-    #         # get numpy array
-    #         img1d = np.frombuffer(response.image_data_uint8, dtype=np.uint8)
-    #
-    #         # reshape array to 4 channel image array H X W X 4
-    #         img_rgb = img1d.reshape(response.height, response.width, 3)
-    #
-    #         cv2.imshow("image", img_rgb)
-    # =============================================================================
+        # ________________ Image _____________________________________________
+        if self.current_image is not None:
+            upscaled_im = cv2.resize(
+                self.current_image,
+                (IMAGE_WIDTH * 10, IMAGE_HEIGHT * 10),
+                interpolation=cv2.INTER_NEAREST,
+            )
+            cv2.imshow("image", upscaled_im)
 
     def close(self):
         self.client.simPause(False)

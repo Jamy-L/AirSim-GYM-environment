@@ -24,7 +24,7 @@ from stable_baselines3.common.torch_layers import (
     NatureCNN,
 )
 
-
+import cv2
 from gym import spaces
 from torch.nn import functional as F
 
@@ -619,6 +619,81 @@ def convert_global_to_relative_position(Ue_spawn_point, Ue_global_point):
     C = C / 100
     C[2] *= -1
     return C[0], C[1], C[2]
+
+
+# __________ Image jammer ____________________
+def gaussian_noise(img, sigma):
+    noise = np.random.normal(loc=0, scale=sigma, size=img.shape)
+    noise = noise.astype(np.uint8)
+    output = img + noise
+    output[output > 255] = 255
+    output[output < 0] = 0
+    return output
+
+
+def random_gaussian_sampling(xmin, xmax):
+    mean = (xmin + xmax) / 2
+    sigma = (xmax - xmin) / 4
+    return round(random.gauss(mean, sigma))
+
+
+def change_colors(img, brightness=255, contrast=127):
+    """ Change the contrast and brightness of an image
+    Shoutout to this guy for coding that :
+    https://www.geeksforgeeks.org/changing-the-contrast-and-brightness-of-an-image-using-python-opencv/
+
+    Parameters
+    ----------
+    img : TYPE
+        DESCRIPTION.
+    brightness : TYPE, optional
+        DESCRIPTION. The default is 255.
+    contrast : TYPE, optional
+        DESCRIPTION. The default is 127.
+
+    Returns
+    -------
+    cal : TYPE
+        DESCRIPTION.
+
+    """
+    brightness = int((brightness - 0) * (255 - (-255)) / (510 - 0) + (-255))
+
+    contrast = int((contrast - 0) * (127 - (-127)) / (254 - 0) + (-127))
+
+    if brightness != 0:
+
+        if brightness > 0:
+
+            shadow = brightness
+
+            max = 255
+
+        else:
+
+            shadow = 0
+            max = 255 + brightness
+
+        al_pha = (max - shadow) / 255
+        ga_mma = shadow
+
+        # The function addWeighted
+        # calculates the weighted sum
+        # of two arrays
+        cal = cv2.addWeighted(img, al_pha, img, 0, ga_mma)
+
+    else:
+        cal = img
+
+    if contrast != 0:
+        Alpha = float(131 * (contrast + 127)) / (127 * (131 - contrast))
+        Gamma = 127 * (1 - Alpha)
+
+        # The function addWeighted calculates
+        # the weighted sum of two arrays
+        cal = cv2.addWeighted(cal, Alpha, cal, 0, Gamma)
+
+    return cal
 
 
 # _______________Checkpoints and spawn ______________________
