@@ -5,24 +5,10 @@ Created on Wed Mar 30 10:13:35 2022
 @author: jamyl
 """
 
-from jamys_toolkit import Jamys_CustomFeaturesExtractor
+
 from stable_baselines3 import SAC, PPO, DQN, TD3
-from Airsim_gym_env import (
-    BoxAirSimEnv,
-    MultiDiscreteAirSimEnv,
-    DiscreteAirSimEnv,
-    normalize_action,
-    BoxAirSimEnv_5_memory,
-)
-from sim_to_real_library import lidar_sim_to_real
-from jamys_toolkit import (
-    Circuit_wrapper,
-    convert_lidar_data_to_polar,
-    Circuit_spawn,
-    fetch_action,
-    pre_train,
-    create_spawn_points,
-)
+
+
 import numpy as np
 import airsim
 from stable_baselines3.common.env_checker import check_env
@@ -34,14 +20,22 @@ import random
 import sys
 
 sys.path.append("C:/Users/jamyl/Documents/GitHub/AirSim-GYM-environment")
-
+from jamys_toolkit import (
+    fetch_action,
+    pre_train,
+    create_spawn_points,
+)
+from jamys_toolkit import Jamys_CustomFeaturesExtractor
+from Airsim_gym_env import (
+    BoxAirSimEnv,
+    MultiDiscreteAirSimEnv,
+    DiscreteAirSimEnv,
+    normalize_action,
+    BoxAirSimEnv_5_memory,
+)
+from sim_to_real_library import lidar_sim_to_real
 
 SAC.pre_train = pre_train  # Adding my personal touch
-
-
-sys.path.append(
-    "C:/Users/jamyl/Documents/GitHub/AirSim-GYM-environment/jamys_toolkit.py"
-)
 
 
 ###############################################################################
@@ -91,11 +85,24 @@ airsim_env = BoxAirSimEnv_5_memory(
 )
 
 
-models_dir = "P:/Benchmark_2/Training_V5"
-logdir = "P:/Benchmark_2/Training_V5"
+models_dir = "P:/Final_benchmark/Training_V2"
+logdir = "P:/Final_benchmark/Training_V2"
 path = "P:/Replay_buffer/Replay_buffer.pkl"
 
 
+model = SAC.load(
+    "P:/Final_benchmark/Training_V2/1004000",
+    tensorboard_log="P:/Final_benchmark/Training_V2",
+)
+obs = airsim_env.reset()
+airsim_env.render()
+while True:
+    action, _states = model.predict(obs, deterministic=True)
+    obs, reward, done, info = airsim_env.step(action)
+    if done:
+        obs = airsim_env.reset()
+
+#%%
 TIMESTEPS = 1000
 
 
@@ -107,7 +114,7 @@ while True:
     model.learn(
         total_timesteps=TIMESTEPS,
         reset_num_timesteps=False,
-        tb_log_name="SAC_memory_5_new_lidar",
+        tb_log_name="SAC_memory_5_jammed_lidar",
     )
     model.save(f"{models_dir}/{TIMESTEPS*iters}")
 

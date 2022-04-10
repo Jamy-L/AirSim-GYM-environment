@@ -14,6 +14,26 @@ from jamys_toolkit import Circuit_wrapper, convert_lidar_data_to_polar
 import matplotlib.pyplot as plt
 import cv2
 import random
+from threading import Thread
+
+
+def proximity_jammer(lidar):
+    """ Crop the closest lidar points
+
+
+    Parameters
+    ----------
+    lidar : numpy array
+        lidar data
+
+    Returns
+    -------
+    numpy array
+        croped lidar
+
+    """
+    proximity_index = np.where(lidar[:, 1] <= 150 * 6.25 / 1000)
+    return np.delete(lidar, proximity_index, 0)
 
 
 def sparse_sample(X, sample_size):
@@ -228,9 +248,17 @@ class BoxAirSimEnv(gym.Env):
             }
         )
 
+        # ________ init of reset() attributes ___________
+
         self.reversed_world = None
         self.prev_throttle = None
         self.prev_steering = None
+        self.current_lidar = None
+        self.prev_lidar = None
+        self.Circuit1 = None
+        self.throttle = None
+        self.steering = None
+        self.ax = None
 
     def step(self, action):
         info = {}  # Just a debugging feature here
@@ -259,9 +287,9 @@ class BoxAirSimEnv(gym.Env):
         self.prev_steering = np.array([action[1]])
 
         position = self.car_state.kinematics_estimated.position
-        gate_passed, finished_race = self.Circuit1.cycle_tick(
-            position.x_val, position.y_val
-        )  # updating the checkpoint situation
+        gate_passed = self.Circuit1.cycle_tick(position.x_val, position.y_val)[
+            0
+        ]  # updating the checkpoint situation
 
         # __________ extracts the observation _____________________________________
         current_raw_lidar = convert_lidar_data_to_polar(self.client.getLidarData())
@@ -594,6 +622,22 @@ class BoxAirSimEnv_5_memory(gym.Env):
             }
         )
 
+        # ________ init of reset() attributes ___________
+
+        self.reversed_world = None
+        self.prev_throttle = None
+        self.prev_steering = None
+        self.current_lidar = None
+        self.prev_lidar1 = None
+        self.prev_lidar2 = None
+        self.prev_lidar3 = None
+        self.prev_lidar4 = None
+        self.prev_lidar5 = None
+        self.Circuit1 = None
+        self.throttle = None
+        self.steering = None
+        self.ax = None
+
     def step(self, action):
         info = {}  # Just a debugging feature here
 
@@ -621,12 +665,15 @@ class BoxAirSimEnv_5_memory(gym.Env):
         self.prev_steering = np.array([action[1]])
 
         position = self.car_state.kinematics_estimated.position
-        gate_passed, finished_race = self.Circuit1.cycle_tick(
-            position.x_val, position.y_val
-        )  # updating the checkpoint situation
+        gate_passed = self.Circuit1.cycle_tick(position.x_val, position.y_val)[
+            0
+        ]  # updating the checkpoint situation
 
         # __________ extracts the observation ______________________
         current_raw_lidar = convert_lidar_data_to_polar(self.client.getLidarData())
+        current_raw_lidar = proximity_jammer(
+            current_raw_lidar
+        )  # removing closest points
         self.current_lidar, lidar_error = lidar_formater(
             current_raw_lidar, target_lidar_size=self.lidar_size
         )
@@ -816,6 +863,7 @@ class BoxAirSimEnv_5_memory(gym.Env):
         return observation  # reward, done, info can't be included
 
     def render(self, mode="human"):
+        print("rendering")
         if not self.is_rendered:
             fig = plt.figure()
             self.ax = fig.add_subplot(projection="polar")
@@ -825,23 +873,26 @@ class BoxAirSimEnv_5_memory(gym.Env):
         T = self.current_lidar[:, 0]
         R = self.current_lidar[:, 1]
         self.ax.scatter(T, R)
-        plt.pause(0.01)
+        plt.pause(1e-6)
         plt.draw()
+        print("drawn")
 
-        # ________________ Image ___________________________________________________
-        responses = self.client.simGetImages(
-            [airsim.ImageRequest("Camera1", airsim.ImageType.Scene, False, False)],
-            "MyVehicle",
-        )  # scene vision image in uncompressed RGB array
-        response = responses[0]
-
-        # get numpy array
-        img1d = np.frombuffer(response.image_data_uint8, dtype=np.uint8)
-
-        # reshape array to 4 channel image array H X W X 4
-        img_rgb = img1d.reshape(response.height, response.width, 3)
-
-        cv2.imshow("image", img_rgb)
+    # =============================================================================
+    #         # ________________ Image ___________________________________________________
+    #         responses = self.client.simGetImages(
+    #             [airsim.ImageRequest("Camera1", airsim.ImageType.Scene, False, False)],
+    #             "MyVehicle",
+    #         )  # scene vision image in uncompressed RGB array
+    #         response = responses[0]
+    #
+    #         # get numpy array
+    #         img1d = np.frombuffer(response.image_data_uint8, dtype=np.uint8)
+    #
+    #         # reshape array to 4 channel image array H X W X 4
+    #         img_rgb = img1d.reshape(response.height, response.width, 3)
+    #
+    #         cv2.imshow("image", img_rgb)
+    # =============================================================================
 
     def close(self):
         self.client.simPause(False)
@@ -988,6 +1039,18 @@ class MultiDiscreteAirSimEnv(gym.Env):
             }
         )
 
+        # ________ init of reset() attributes ___________
+
+        self.reversed_world = None
+        self.prev_throttle = None
+        self.prev_steering = None
+        self.current_lidar = None
+        self.prev_lidar = None
+        self.Circuit1 = None
+        self.throttle = None
+        self.steering = None
+        self.ax = None
+
     def step(self, action):
         info = {}  # Just a debugging feature here
 
@@ -1016,9 +1079,9 @@ class MultiDiscreteAirSimEnv(gym.Env):
         self.prev_steering = np.array([self.car_controls.steering])
 
         position = self.car_state.kinematics_estimated.position
-        gate_passed, finished_race = self.Circuit1.cycle_tick(
-            position.x_val, position.y_val
-        )  # updating the checkpoint situation
+        gate_passed = self.Circuit1.cycle_tick(position.x_val, position.y_val)[
+            0
+        ]  # updating the checkpoint situation
 
         # _______________ extracts the observation ____________________
         current_raw_lidar = convert_lidar_data_to_polar(self.client.getLidarData())
@@ -1335,6 +1398,15 @@ class DiscreteAirSimEnv(gym.Env):
                 "prev_steering": gym.spaces.Box(low=-0.5, high=+0.5, shape=(1,)),
             }
         )
+        # ________ init of reset() attributes ___________
+
+        self.reversed_world = None
+        self.prev_steering = None
+        self.current_lidar = None
+        self.prev_lidar = None
+        self.Circuit1 = None
+        self.steering = None
+        self.ax = None
 
     def step(self, action):
         info = {}  # Just a debugging feature here
@@ -1362,9 +1434,9 @@ class DiscreteAirSimEnv(gym.Env):
         self.prev_steering = np.array([self.car_controls.steering])
 
         position = self.car_state.kinematics_estimated.position
-        gate_passed, finished_race = self.Circuit1.cycle_tick(
-            position.x_val, position.y_val
-        )  # updating the checkpoint situation
+        gate_passed = self.Circuit1.cycle_tick(position.x_val, position.y_val)[
+            0
+        ]  # updating the checkpoint situation
 
         # __________________ extracts the observation __________________________
         current_raw_lidar = convert_lidar_data_to_polar(self.client.getLidarData())
@@ -1454,7 +1526,6 @@ class DiscreteAirSimEnv(gym.Env):
 
         ##########
 
-        self.throttle = 0
         self.steering = 0
 
         self.done = False

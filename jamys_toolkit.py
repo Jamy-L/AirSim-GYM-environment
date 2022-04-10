@@ -11,7 +11,7 @@ import gym
 import torch as th
 from torch import nn
 
-from typing import Any, Dict, List, Optional, Tuple, Type, Union
+from typing import Any, Dict, List, Optional, Type, Union
 
 from stable_baselines3.common.type_aliases import Schedule
 from stable_baselines3.sac.policies import SACPolicy
@@ -21,10 +21,7 @@ from stable_baselines3.common.policies import BaseModel
 from stable_baselines3.common.torch_layers import (
     BaseFeaturesExtractor,
     CombinedExtractor,
-    FlattenExtractor,
     NatureCNN,
-    create_mlp,
-    get_actor_critic_arch,
 )
 
 
@@ -70,21 +67,20 @@ def preprocess_lidar_tensor(
     """
     if not isinstance(observation_space, spaces.Box):
         raise TypeError("The observation space is not a box ....")
-    else:
         obs = obs1.float()
-        c0 = (obs[:, :, 0, None] + np.pi) / 2 * np.pi
-        # passing from [0, infty[ to [0, 1]
-        c1 = -th.exp(-obs[:, :, 1, None]) + 1
-        normalized = th.cat((c0, c1), dim=2)
-        obs2 = normalized[:, None, :, :]  # adding a fourth dimension
+    c0 = (obs[:, :, 0, None] + np.pi) / 2 * np.pi
+    # passing from [0, infty[ to [0, 1]
+    c1 = -th.exp(-obs[:, :, 1, None]) + 1
+    normalized = th.cat((c0, c1), dim=2)
+    obs2 = normalized[:, None, :, :]  # adding a fourth dimension
 
-        # =============================================================================
-        #         This reshapes is essential, since the function receives a 3d tensor.
-        #         The first dimension receives the batch size. This reshape allows to
-        #         keep the batch size on the 0 dimension, then channel on 1, regular
-        #         Lidar shape on 2, 3
-        # =============================================================================
-        return obs2
+    # =============================================================================
+    #         This reshapes is essential, since the function receives a 3d tensor.
+    #         The first dimension receives the batch size. This reshape allows to
+    #         keep the batch size on the 0 dimension, then channel on 1, regular
+    #         Lidar shape on 2, 3
+    # =============================================================================
+    return obs2
 
 
 def preprocess_obs(
@@ -189,7 +185,7 @@ class Jamys_CustomFeaturesExtractor(BaseFeaturesExtractor):
     def __init__(
         self,
         observation_space: gym.spaces.Dict,
-        Lidar_data_label=[],
+        Lidar_data_label=None,
         lidar_output_dim: int = 100,
         cnn_output_dim: int = 256,
     ):
@@ -212,7 +208,7 @@ class Jamys_CustomFeaturesExtractor(BaseFeaturesExtractor):
             if is_image_space(subspace):
                 extractors[key] = NatureCNN(subspace, features_dim=cnn_output_dim)
                 total_concat_size += cnn_output_dim
-            elif key in Lidar_data_label:
+            elif (Lidar_data_label is not None) and (key in Lidar_data_label):
                 if Lidar_extractor is None:
                     Lidar_extractor = create_Lidar_extractor(subspace, lidar_output_dim)
                 extractors[key] = create_Lidar_extractor(subspace, lidar_output_dim)
@@ -307,7 +303,7 @@ class Jamys_CustomPolicy(SACPolicy):
         )
 
 
-class LidarCNN(BaseFeaturesExtractor):  # TODO
+class LidarCNN(BaseFeaturesExtractor):
     """
 
 
@@ -323,16 +319,18 @@ class LidarCNN(BaseFeaturesExtractor):  # TODO
         kernel_height=5,
     ):
         super(LidarCNN, self).__init__(observation_space, features_dim)
-        # We assume On channel, H x 2 X 1 format
-        # Re-ordering will be done by pre-preprocessing or wrapper
-        # assert is_image_space(observation_space, check_channels=False), (
-        #     "You should use NatureCNN "
-        #     f"only with images not with {observation_space}\n"
-        #     "(you are probably using `CnnPolicy` instead of `MlpPolicy` or `MultiInputPolicy`)\n"
-        #     "If you are using a custom environment,\n"
-        #     "please check it using our env checker:\n"
-        #     "https://stable-baselines3.readthedocs.io/en/master/common/env_checker.html"
-        # )
+        # =============================================================================
+        #         We assume On channel, H x 2 X 1 format
+        #         Re-ordering will be done by pre-preprocessing or wrapper
+        #         assert is_image_space(observation_space, check_channels=False), (
+        #             "You should use NatureCNN "
+        #             f"only with images not with {observation_space}\n"
+        #             "(you are probably using `CnnPolicy` instead of `MlpPolicy` or `MultiInputPolicy`)\n"
+        #             "If you are using a custom environment,\n"
+        #             "please check it using our env checker:\n"
+        #             "https://stable-baselines3.readthedocs.io/en/master/common/env_checker.html"
+        #         )
+        # =============================================================================
         n_input_channels = 1
         self.cnn = nn.Sequential(
             nn.Conv2d(
@@ -384,7 +382,7 @@ def pre_train(self, replay_buffer_path, gradient_steps=1000):
     """
     print("Loading the replay buffer from local disk ...")
     self.load_replay_buffer(replay_buffer_path)
-    self.replay_buffer.device = "cuda"  # TODO is it really working ??
+    self.replay_buffer.device = "cuda"
     print("Replay buffer succesfully loaded !\n\n")
     self._setup_learn(total_timesteps=10, eval_env=None)
     print("Training the model from teacher's demonstration ...")
@@ -416,9 +414,9 @@ def convert_lidar_data_to_polar(lidar_data):
     converted_lidar_data=np.array([theta_1, ..., theta_n]) , np.array([r_1, ..., r_n]).
 
     """
-    list = lidar_data.point_cloud
-    X = np.array(list[0::3])
-    Y = np.array(list[1::3])
+    liste = lidar_data.point_cloud
+    X = np.array(liste[0::3])
+    Y = np.array(liste[1::3])
 
     R = np.sqrt(X ** 2 + Y ** 2)
     T = np.arctan2(Y, X)
@@ -534,7 +532,9 @@ class Checkpoint:
 
 
 class Circuit:
-    def __init__(self, liste_checkpoints=[]):
+    def __init__(self, liste_checkpoints):
+        if len(liste_checkpoints) == 0:
+            raise ValueError("The given checkpoint list is empty")
         self.active_checkpoints = liste_checkpoints
 
     def cycle_tick(self, x_player, y_player):
@@ -586,6 +586,10 @@ class Circuit_wrapper:
         self.spawn_point_list = circuit_spawn_list
         self.list_checkpoint_coordinates = list_checkpoint_coordinates
         self.UE_spawn_point = UE_spawn_point
+
+        self.selected_spawn_point = None
+        self.theta_spawn = None
+        self.circuit = None
 
     def sample_random_spawn_point(self):
         self.selected_spawn_point = random.choice(self.spawn_point_list)
