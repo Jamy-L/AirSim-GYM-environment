@@ -9,6 +9,7 @@ from threading import Thread, Timer
 import time
 from queue import Queue
 from stable_baselines3 import SAC
+from jamys_toolkit import lidar_formater, denormalize_action
 
 
 # _________ global variables ________________
@@ -21,7 +22,7 @@ MODEL = SAC.load("P:/Final_benchmark/Training_V2/1004000")
 # __________ Control functions _________________
 def decision_making(obs):
     action = MODEL.predict(obs, deterministic=True)[0]
-    return action
+    return denormalize_action(action)
 
 
 def push_action(action):

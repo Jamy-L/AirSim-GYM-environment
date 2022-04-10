@@ -10,11 +10,16 @@ import gym
 import airsim
 import numpy as np
 import time
-from jamys_toolkit import Circuit_wrapper, convert_lidar_data_to_polar
+from jamys_toolkit import (
+    Circuit_wrapper,
+    convert_lidar_data_to_polar,
+    lidar_formater,
+    normalize_action,
+    denormalize_action,
+)
 import matplotlib.pyplot as plt
 import cv2
 import random
-from threading import Thread
 
 
 def proximity_jammer(lidar):
@@ -34,113 +39,6 @@ def proximity_jammer(lidar):
     """
     proximity_index = np.where(lidar[:, 1] <= 150 * 6.25 / 1000)
     return np.delete(lidar, proximity_index, 0)
-
-
-def sparse_sample(X, sample_size):
-    """Uniform sampling of the X array.
-
-    Sorting x beforehand may be a good idea.
-
-    Parameters
-    ----------
-    X : numpy array
-        Lidar data to which sample uniformally
-    sample_size : int
-         The desired output size
-
-    Returns
-    -------
-    numpy array
-        A smaller version of X
-
-    """
-    N = X.shape[0]
-    if N < sample_size:
-        raise ValueError(
-            """"The lidar to sample is smaller than the wanted sample_size
-            (size {} against target size {}). Maybe you should use
-            array_augmentation() instead""".format(
-                N, sample_size
-            )
-        )
-
-    Indexes = np.linspace(0, N - 1, sample_size)
-    return X[Indexes.astype(np.int32)]
-
-
-def array_augmentation(A, final_size):
-    """Transform of A into a bigger array.
-
-    Parameters
-    ----------
-    A : numpy array
-        Lidar data
-    final_size : int
-        The desired finals size
-
-    Returns
-    -------
-    B : numpy array
-        conversion of A in a bigger size
-
-    """
-    N = A.shape[0]
-    if N > final_size:
-        raise ValueError(
-            """"The lidar data to augmentate is bigger than the target size
-            (size {} against target size {}). Maybe you should use
-            sparse_sample() instead""".format(
-                N, final_size
-            )
-        )
-    m = final_size - N
-    B1 = np.ones((m, 2)) * A[0]
-    B = np.concatenate((B1, A[0:, :]), axis=0)
-    return B
-
-
-def lidar_formater(lidar_data, target_lidar_size, angle_sort=True):
-    """
-    transforms a variable size lidar data to a fixed size numpy array. If the
-    lidar is too big, points are cropped. If it's too small, the first value
-    is padded. If lidar_data is empty, it is filled with zeros and
-    conversion_error = True is returned
-
-
-    Parameters
-    ----------
-    lidar_data : numpy array
-        Numy array reprensenting the polar converted raw lidar data received.
-    target_lidar_size : int
-        Number of points desired for output
-    angle_srot : boolean
-        Whether or not the values should be ordered by growing theta (may
-        impact performances if the target lidar size is very big)
-
-    Returns
-    -------
-    new_lidar_data : numpy array
-        size adjusted new lidar data
-    conversion_error: boolean
-        whether or not an error occured
-
-    """
-
-    if angle_sort:
-        idx = lidar_data[:, 0].argsort()
-        lidar_data = lidar_data[idx, :]
-
-    n_points_received = lidar_data.shape[0]
-    if lidar_data.size == 0:
-        return np.zeros((target_lidar_size, 2)), True
-
-    if n_points_received < target_lidar_size:  # not enough points !
-        new_lidar_data = array_augmentation(lidar_data, target_lidar_size)
-
-    else:
-        new_lidar_data = sparse_sample(lidar_data, target_lidar_size)
-
-    return new_lidar_data, False
 
 
 class BoxAirSimEnv(gym.Env):
@@ -1639,41 +1537,3 @@ class DiscreteAirSimEnv(gym.Env):
             self.client.simSetVehiclePose(pose, ignore_collision=True)
             time.sleep(wait_time)
             i += 1
-
-
-def denormalize_action(action):
-    """ Denormalize the throttle and steering from [0,1]² into [-1, 1]x[-0.5, 0.5] .
-
-
-    Parameters
-    ----------
-    action : np.array
-        A normalised action, where both throttle and steering are represented in [0,1]
-
-    Returns
-    -------
-    denormalized_action : np.array
-        An AirSim type action, where throttle is in [-1, 1] and steering in [-0.5, 0.5]
-
-    """
-    denormalized_action = (action - np.array([0.5, 0.5])) * np.array([2, 1])
-    return denormalized_action
-
-
-def normalize_action(action):
-    """ Normalize throttle and steering from [-1, 1]x[-0.5, 0.5] into [0,1]².
-
-
-    Parameters
-    ----------
-    action : TYPE
-        An AirSim format action, where where throttle is in [-1, 1] and steering in [-0.5, 0.5]
-
-    Returns
-    -------
-    normalize_action : nummpy array
-        A normalised action, where both throttle and steering are represented in [0,1]
-
-    """
-    normalized_action = action * np.array([0.5, 1]) + np.array([0.5, 0.5])
-    return normalized_action
