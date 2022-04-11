@@ -10,18 +10,23 @@ import time
 from queue import Queue
 from stable_baselines3 import SAC
 from jamys_toolkit import lidar_formater, denormalize_action
+import numpy as np
 
 
 # _________ global variables ________________
 TIME = time.time()
 DECISION_PERIOD = 0.1  # seconds
 OBSERVATION_PERIOD = 0.01
-MODEL = SAC.load("P:/Final_benchmark/Training_V2/1004000")
+#MODEL = SAC.load("P:/Final_benchmark/Training_V2/1004000")
 
 
 # __________ Control functions _________________
 def decision_making(obs):
-    action = MODEL.predict(obs, deterministic=True)[0]
+    global TIME
+    action = np.array([0,0]) 
+    #MODEL.predict(obs, deterministic=True)[0]
+    print(time.time()-TIME)
+    TIME = time.time()
     return denormalize_action(action)
 
 
