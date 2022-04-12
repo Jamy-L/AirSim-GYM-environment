@@ -103,14 +103,20 @@ model_to_train = SAC.load(
     "P:/Final_benchmark/Training_V2/1119000", airsim_env, tensorboard_log=logdir
 )
 
-iters = 0
-while True:
-    iters = iters + 1
-    model_to_train.learn(
-        total_timesteps=TIMESTEPS, reset_num_timesteps=False,
-    )
-    model_to_train.save(f"{models_dir}/{TIMESTEPS*iters}")
+# iters = 0
+# while True:
+#     iters = iters + 1
+#     model_to_train.learn(
+#         total_timesteps=TIMESTEPS, reset_num_timesteps=False,
+#     )
+#     model_to_train.save(f"{models_dir}/{TIMESTEPS*iters}")
 
+obs = airsim_env.reset()
+while True:
+    action, _states = model_to_train.predict(obs, deterministic=True)
+    obs, reward, done, info = airsim_env.step(action)
+    if done:
+        pass  # obs = airsim_env.reset()
 
 # %% basic control
 

@@ -643,7 +643,7 @@ class BoxAirSimEnv_5_memory(gym.Env):
         for agent_name in self.multi_agent_obs.keys():
             self.client.setCarControls(self.multi_agent_control[agent_name], agent_name)
 
-    def observation_maker(self, i):
+    def observation_maker(self, i, init=False):
         if i == 0:
             name = "MyVehicle"
         else:
@@ -657,11 +657,18 @@ class BoxAirSimEnv_5_memory(gym.Env):
         )  # removing closest points
         current_lidar, lidar_error = lidar_formater(current_raw_lidar, self.lidar_size)
 
-        prev_lidar1 = np.copy(current_lidar)
-        prev_lidar2 = np.copy(current_lidar)
-        prev_lidar3 = np.copy(current_lidar)
-        prev_lidar4 = np.copy(current_lidar)
-        prev_lidar5 = np.copy(current_lidar)
+        if init:
+            prev_lidar1 = np.copy(current_lidar)
+            prev_lidar2 = np.copy(current_lidar)
+            prev_lidar3 = np.copy(current_lidar)
+            prev_lidar4 = np.copy(current_lidar)
+            prev_lidar5 = np.copy(current_lidar)
+        else:
+            prev_lidar5 = self.multi_agent_obs[name]["prev_lidar4"]
+            prev_lidar4 = self.multi_agent_obs[name]["prev_lidar3"]
+            prev_lidar3 = self.multi_agent_obs[name]["prev_lidar2"]
+            prev_lidar2 = self.multi_agent_obs[name]["prev_lidar1"]
+            prev_lidar1 = self.multi_agent_obs[name]["current_lidar"]
 
         prev_throttle = np.array([self.multi_agent_control[name].throttle])
         prev_steering = np.array([self.multi_agent_control[name].steering])
@@ -692,15 +699,15 @@ class BoxAirSimEnv_5_memory(gym.Env):
             current_lidar[:, 0] *= -1
             current_lidar = current_lidar[::-1]
             prev_lidar1[:, 0] *= -1
-            prev_lidar1 = current_lidar[::-1]
+            prev_lidar1 = prev_lidar1[::-1]
             prev_lidar2[:, 0] *= -1
-            prev_lidar2 = current_lidar[::-1]
+            prev_lidar2 = prev_lidar2[::-1]
             prev_lidar3[:, 0] *= -1
-            prev_lidar3 = current_lidar[::-1]
+            prev_lidar3 = prev_lidar3[::-1]
             prev_lidar4[:, 0] *= -1
-            prev_lidar4 = current_lidar[::-1]
+            prev_lidar4 = prev_lidar4[::-1]
             prev_lidar5[:, 0] *= -1
-            prev_lidar5 = current_lidar[::-1]
+            prev_lidar5 = prev_lidar5[::-1]
 
         observation = {
             "current_lidar": current_lidar,
@@ -771,7 +778,7 @@ class BoxAirSimEnv_5_memory(gym.Env):
         time.sleep(1)
 
         for i in range(5):
-            self.observation_maker(i)
+            self.observation_maker(i, init=True)
 
         return self.multi_agent_obs["MyVehicle"]  # reward, done, info can't be included
 
