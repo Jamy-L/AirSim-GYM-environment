@@ -16,10 +16,14 @@ from jamys_toolkit import (
     lidar_formater,
     normalize_action,
     denormalize_action,
+    convert_global_to_relative_position,
 )
 import matplotlib.pyplot as plt
 import cv2
 import random
+from stable_baselines3 import SAC
+
+ENNEMI_MODEL = SAC.load("P:/Final_benchmark/Training_V2/1119000")
 
 
 def proximity_jammer(lidar):
@@ -449,8 +453,14 @@ class BoxAirSimEnv_5_memory(gym.Env):
         # Define action and observation space
 
         self.client = client
-        self.car_controls = airsim.CarControls()
-        self.car_state = client.getCarState()
+        self.multi_agent_control = {}
+        self.multi_agent_control["MyVehicle"] = airsim.CarControls()
+        for i in range(1, 5):
+            self.multi_agent_control["Car{}".format(i)] = airsim.CarControls()
+            self.multi_agent_control["Car{}".format(i)].throttle = 0
+            self.multi_agent_control["Car{}".format(i)].steering = 0
+
+        self.car_state = client.getCarState("MyVehicle")
         # car_state is an AirSim object that contains informations that are not
         # obtainable in real experiments. Therefore, it cannot be used as a
         # MDP object. However, it is useful for computing the reward
@@ -468,6 +478,33 @@ class BoxAirSimEnv_5_memory(gym.Env):
         self.UE_spawn_point = UE_spawn_point
         self.liste_checkpoints_coordonnes = liste_checkpoints_coordinates
         self.liste_spawn_point = liste_spawn_point
+
+        # ______ Fixed ennemi respawn _____________________________
+        spawn1 = convert_global_to_relative_position(
+            self.UE_spawn_point, [-12990, 4620, 350]
+        )
+        angle1 = 0
+        respawn1 = {"coordinates": spawn1, "angle": angle1}
+
+        spawn2 = convert_global_to_relative_position(
+            self.UE_spawn_point, [-9240, -400, 350]
+        )
+        angle2 = 0
+        respawn2 = {"coordinates": spawn2, "angle": angle2}
+
+        spawn3 = convert_global_to_relative_position(
+            self.UE_spawn_point, [-12030, -7000, 350]
+        )
+        angle3 = 180
+        respawn3 = {"coordinates": spawn3, "angle": angle3}
+
+        spawn4 = convert_global_to_relative_position(
+            self.UE_spawn_point, [-19360, -4030, 350]
+        )
+        angle4 = 90
+        respawn4 = {"coordinates": spawn4, "angle": angle4}
+
+        self.ennemi_respawn = {1: respawn1, 2: respawn2, 3: respawn3, 4: respawn4}
 
         # ____________ Below are MDP related objects ______________
 
@@ -523,17 +560,8 @@ class BoxAirSimEnv_5_memory(gym.Env):
         # ________ init of reset() attributes ___________
 
         self.reversed_world = None
-        self.prev_throttle = None
-        self.prev_steering = None
-        self.current_lidar = None
-        self.prev_lidar1 = None
-        self.prev_lidar2 = None
-        self.prev_lidar3 = None
-        self.prev_lidar4 = None
-        self.prev_lidar5 = None
+        self.multi_agent_obs = {}
         self.Circuit1 = None
-        self.throttle = None
-        self.steering = None
         self.ax = None
 
     def step(self, action):
@@ -542,13 +570,15 @@ class BoxAirSimEnv_5_memory(gym.Env):
         # The actions are extracted from the "action" argument
 
         denormalized_action = denormalize_action(action)
-        self.car_controls.throttle = float(denormalized_action[0])
-        self.car_controls.steering = float(denormalized_action[1])
+        self.multi_agent_control["MyVehicle"].throttle = float(denormalized_action[0])
+        self.multi_agent_control["MyVehicle"].steering = float(denormalized_action[1])
 
         if self.reversed_world:
-            self.car_controls.steering *= -1
+            self.multi_agent_control["MyVehicle"].steering *= -1
 
-        self.client.setCarControls(self.car_controls)
+        for i in range(1, 5):
+            self.decision_maker(i)
+        self.action_pusher()
 
         # Now that everything is good and proper, let's run  AirSim a bit
         self.client.simPause(False)
@@ -557,80 +587,18 @@ class BoxAirSimEnv_5_memory(gym.Env):
         self.client.simPause(True)
 
         # Get the state from AirSim
-        self.car_state = self.client.getCarState()
-
-        self.prev_throttle = np.array([action[0]])
-        self.prev_steering = np.array([action[1]])
+        self.car_state = self.client.getCarState("MyVehicle")
+        for i in range(5):
+            self.observation_maker(i)
 
         position = self.car_state.kinematics_estimated.position
         gate_passed = self.Circuit1.cycle_tick(position.x_val, position.y_val)[
             0
         ]  # updating the checkpoint situation
 
-        # __________ extracts the observation ______________________
-        current_raw_lidar = convert_lidar_data_to_polar(self.client.getLidarData())
-        current_raw_lidar = proximity_jammer(
-            current_raw_lidar
-        )  # removing closest points
-        self.current_lidar, lidar_error = lidar_formater(
-            current_raw_lidar, target_lidar_size=self.lidar_size
-        )
-
-        # __________ Error killswitch, in case the car is going rogue ! _____________
-        if (
-            lidar_error or self.done
-        ):  # self.done can never be true at this point unless the lidar was corrupted in reset()
-            observation = {  # dummy observation, save the sim !
-                "current_lidar": self.current_lidar,
-                "prev_lidar1": self.prev_lidar1,
-                "prev_lidar2": self.prev_lidar2,
-                "prev_lidar3": self.prev_lidar3,
-                "prev_lidar4": self.prev_lidar4,
-                "prev_lidar5": self.prev_lidar5,
-                "prev_throttle": self.prev_throttle,
-                "prev_steering": self.prev_steering,
-            }
-            print(
-                """"Caution, no point was observed by the lidar, the vehicule may be escaping:
-                    reseting sim"""
-            )
-            return observation, 0, True, {"Lidar error": True}
-
-        # ______________________________________________
-
-        if self.reversed_world:
-            self.current_lidar[:, 0] *= -1
-            self.current_lidar = self.current_lidar[::-1]
-            self.prev_lidar1[:, 0] *= -1
-            self.prev_lidar1 = self.prev_lidar1[::-1]
-            self.prev_lidar2[:, 0] *= -1
-            self.prev_lidar2 = self.prev_lidar2[::-1]
-            self.prev_lidar3[:, 0] *= -1
-            self.prev_lidar3 = self.prev_lidar3[::-1]
-            self.prev_lidar4[:, 0] *= -1
-            self.prev_lidar4 = self.prev_lidar4[::-1]
-            self.prev_lidar5[:, 0] *= -1
-            self.prev_lidar5 = self.prev_lidar5[::-1]
-
-        observation = {
-            "current_lidar": self.current_lidar,
-            "prev_lidar1": self.prev_lidar1,
-            "prev_lidar2": self.prev_lidar2,
-            "prev_lidar3": self.prev_lidar3,
-            "prev_lidar4": self.prev_lidar4,
-            "prev_lidar5": self.prev_lidar5,
-            "prev_throttle": self.prev_throttle,
-            "prev_steering": self.prev_steering,
-        }
-        self.prev_lidar5 = self.prev_lidar4
-        self.prev_lidar4 = self.prev_lidar3
-        self.prev_lidar3 = self.prev_lidar2
-        self.prev_lidar2 = self.prev_lidar1
-        self.prev_lidar1 = self.current_lidar
-
         # ___________ Updates the reward ____________________
         # collision info is necessary to compute reward
-        collision_info = self.client.simGetCollisionInfo()
+        collision_info = self.client.simGetCollisionInfo("MyVehicle")
         crash = collision_info.has_collided
 
         reward = 0
@@ -655,13 +623,105 @@ class BoxAirSimEnv_5_memory(gym.Env):
         if self.is_rendered:
             self.render()
 
-        return observation, reward, self.done, info
+        return self.multi_agent_obs["MyVehicle"], reward, self.done, info
+
+    def decision_maker(self, i):
+        denormalized_action = denormalize_action(
+            ENNEMI_MODEL.predict(observation=self.multi_agent_obs["Car{}".format(i)])[0]
+        )
+        self.multi_agent_control["Car{}".format(i)].throttle = float(
+            denormalized_action[0]
+        )
+        self.multi_agent_control["Car{}".format(i)].steering = float(
+            denormalized_action[1]
+        )
+
+        if self.reversed_world:
+            self.multi_agent_control["Car{}".format(i)].steering *= -1
+
+    def action_pusher(self):
+        for agent_name in self.multi_agent_obs.keys():
+            self.client.setCarControls(self.multi_agent_control[agent_name], agent_name)
+
+    def observation_maker(self, i):
+        if i == 0:
+            name = "MyVehicle"
+        else:
+            name = "Car{}".format(i)
+
+        current_raw_lidar = convert_lidar_data_to_polar(
+            self.client.getLidarData(vehicle_name=name)
+        )
+        current_raw_lidar = proximity_jammer(
+            current_raw_lidar
+        )  # removing closest points
+        current_lidar, lidar_error = lidar_formater(current_raw_lidar, self.lidar_size)
+
+        prev_lidar1 = np.copy(current_lidar)
+        prev_lidar2 = np.copy(current_lidar)
+        prev_lidar3 = np.copy(current_lidar)
+        prev_lidar4 = np.copy(current_lidar)
+        prev_lidar5 = np.copy(current_lidar)
+
+        prev_throttle = np.array([self.multi_agent_control[name].throttle])
+        prev_steering = np.array([self.multi_agent_control[name].steering])
+
+        if lidar_error:
+            observation = {  # dummy observation, the sim will end anyway
+                "current_lidar": current_lidar,
+                "prev_lidar1": prev_lidar1,
+                "prev_lidar2": prev_lidar2,
+                "prev_lidar3": prev_lidar3,
+                "prev_lidar4": prev_lidar4,
+                "prev_lidar5": prev_lidar5,
+                "prev_throttle": prev_throttle,
+                "prev_steering": prev_steering,
+            }
+
+            print(
+                """"Caution, no point was observed by the lidar, the vehicule may be escaping:
+                    reseting sim"""
+            )
+            # Alas, Done cannot be returned by init, but step() will take care of ending the sim
+            self.done = True
+
+        if self.random_reverse:
+            self.reversed_world = random.choice([False, True])
+
+        if self.reversed_world:
+            current_lidar[:, 0] *= -1
+            current_lidar = current_lidar[::-1]
+            prev_lidar1[:, 0] *= -1
+            prev_lidar1 = current_lidar[::-1]
+            prev_lidar2[:, 0] *= -1
+            prev_lidar2 = current_lidar[::-1]
+            prev_lidar3[:, 0] *= -1
+            prev_lidar3 = current_lidar[::-1]
+            prev_lidar4[:, 0] *= -1
+            prev_lidar4 = current_lidar[::-1]
+            prev_lidar5[:, 0] *= -1
+            prev_lidar5 = current_lidar[::-1]
+
+        observation = {
+            "current_lidar": current_lidar,
+            "prev_lidar1": prev_lidar1,
+            "prev_lidar2": prev_lidar2,
+            "prev_lidar3": prev_lidar3,
+            "prev_lidar4": prev_lidar4,
+            "prev_lidar5": prev_lidar5,
+            "prev_throttle": prev_throttle,
+            "prev_steering": prev_steering,
+        }
+        self.multi_agent_obs[name] = observation
 
     def reset(self):
 
+        print("reset")
         self.client.reset()
 
         # be careful, the call arguments for quaterninons are x,y,z,w
+
+        # _______ main car respawn ______________________________
 
         Circuit_wrapper1 = Circuit_wrapper(
             self.liste_spawn_point,
@@ -678,12 +738,29 @@ class BoxAirSimEnv_5_memory(gym.Env):
         position = airsim.Vector3r(x_val, y_val, z_val)
         pose.position = position
         pose.orientation = orientation
-        self.client.simSetVehiclePose(pose, ignore_collision=True)
+        self.client.simSetVehiclePose(
+            pose, ignore_collision=True, vehicle_name="MyVehicle"
+        )
+
+        # _____________Ennemi car respawn _________________
+
+        for i in range(1, 5):
+            x_val, y_val, z_val = self.ennemi_respawn[i]["coordinates"]
+            theta = self.ennemi_respawn[i]["angle"] * np.pi / 180
+
+            pose = airsim.Pose()
+
+            orientation = airsim.Quaternionr(
+                0, 0, np.sin(theta / 2) * 1, np.cos(theta / 2)
+            )
+            position = airsim.Vector3r(x_val, y_val, z_val)
+            pose.position = position
+            pose.orientation = orientation
+            self.client.simSetVehiclePose(
+                pose, ignore_collision=True, vehicle_name="Car{}".format(i)
+            )
 
         ##########
-
-        self.throttle = 0
-        self.steering = 0
 
         self.done = False
 
@@ -693,72 +770,10 @@ class BoxAirSimEnv_5_memory(gym.Env):
         # the lidar data can take a bit of time before initialisation.
         time.sleep(1)
 
-        current_raw_lidar = convert_lidar_data_to_polar(self.client.getLidarData())
-        self.current_lidar, lidar_error = lidar_formater(
-            current_raw_lidar, self.lidar_size
-        )
+        for i in range(5):
+            self.observation_maker(i)
 
-        self.prev_lidar1 = np.copy(self.current_lidar)
-        self.prev_lidar2 = np.copy(self.current_lidar)
-        self.prev_lidar3 = np.copy(self.current_lidar)
-        self.prev_lidar4 = np.copy(self.current_lidar)
-        self.prev_lidar5 = np.copy(self.current_lidar)
-
-        print("reset")
-        init_normalized_action = normalize_action(np.array([0, 0]))
-        self.throttle = init_normalized_action[0]
-        self.steering = init_normalized_action[1]
-        self.prev_throttle = np.array([init_normalized_action[0]])
-        self.prev_steering = np.array([init_normalized_action[1]])
-
-        if lidar_error:
-            observation = {  # dummy observation, the sim will end anyway
-                "current_lidar": self.current_lidar,
-                "prev_lidar1": self.prev_lidar1,
-                "prev_lidar2": self.prev_lidar2,
-                "prev_lidar3": self.prev_lidar3,
-                "prev_lidar4": self.prev_lidar4,
-                "prev_lidar5": self.prev_lidar5,
-                "prev_throttle": self.prev_throttle,
-                "prev_steering": self.prev_steering,
-            }
-
-            print(
-                """"Caution, no point was observed by the lidar, the vehicule may be escaping:
-                    reseting sim"""
-            )
-            # Alas, Done cannot be returned by init, but step() will take care of ending the sim
-            self.done = True
-
-        if self.random_reverse:
-            self.reversed_world = random.choice([False, True])
-
-        if self.reversed_world:
-            self.current_lidar[:, 0] *= -1
-            self.current_lidar = self.current_lidar[::-1]
-            self.prev_lidar1[:, 0] *= -1
-            self.prev_lidar1 = self.current_lidar[::-1]
-            self.prev_lidar2[:, 0] *= -1
-            self.prev_lidar2 = self.current_lidar[::-1]
-            self.prev_lidar3[:, 0] *= -1
-            self.prev_lidar3 = self.current_lidar[::-1]
-            self.prev_lidar4[:, 0] *= -1
-            self.prev_lidar4 = self.current_lidar[::-1]
-            self.prev_lidar5[:, 0] *= -1
-            self.prev_lidar5 = self.current_lidar[::-1]
-
-        observation = {
-            "current_lidar": self.current_lidar,
-            "prev_lidar1": self.prev_lidar1,
-            "prev_lidar2": self.prev_lidar2,
-            "prev_lidar3": self.prev_lidar3,
-            "prev_lidar4": self.prev_lidar4,
-            "prev_lidar5": self.prev_lidar5,
-            "prev_throttle": self.prev_throttle,
-            "prev_steering": self.prev_steering,
-        }
-
-        return observation  # reward, done, info can't be included
+        return self.multi_agent_obs["MyVehicle"]  # reward, done, info can't be included
 
     def render(self, mode="human"):
         print("rendering")

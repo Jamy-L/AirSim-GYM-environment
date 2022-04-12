@@ -45,7 +45,13 @@ SAC.pre_train = pre_train  # Adding my personal touch
 client = airsim.CarClient()
 client.confirmConnection()
 client.simPause(True)
-client.enableApiControl(True)
+
+client.enableApiControl(True, "MyVehicle")
+client.enableApiControl(True, "Car1")
+client.enableApiControl(True, "Car2")
+client.enableApiControl(True, "Car3")
+client.enableApiControl(True, "Car4")
+
 
 spawn = np.array([-13316.896484, 4559.699707, 322.200134])
 
@@ -85,38 +91,25 @@ airsim_env = BoxAirSimEnv_5_memory(
 )
 
 
-models_dir = "P:/Final_benchmark/Training_V2"
-logdir = "P:/Final_benchmark/Training_V2"
+models_dir = "P:/Final_benchmark/Training_V4"
+logdir = "P:/Final_benchmark/Training_V4"
 path = "P:/Replay_buffer/Replay_buffer.pkl"
 
 
-model = SAC.load(
-    "P:/Final_benchmark/Training_V2/1004000",
-    tensorboard_log="P:/Final_benchmark/Training_V2",
-)
-obs = airsim_env.reset()
-airsim_env.render()
-while True:
-    action, _states = model.predict(obs, deterministic=True)
-    obs, reward, done, info = airsim_env.step(action)
-    if done:
-        obs = airsim_env.reset()
-
-#%%
 TIMESTEPS = 1000
 
 
-model = SAC("MultiInputPolicy", airsim_env, verbose=1, tensorboard_log=logdir)
+model_to_train = SAC.load(
+    "P:/Final_benchmark/Training_V2/1119000", airsim_env, tensorboard_log=logdir
+)
 
 iters = 0
 while True:
     iters = iters + 1
-    model.learn(
-        total_timesteps=TIMESTEPS,
-        reset_num_timesteps=False,
-        tb_log_name="SAC_memory_5_jammed_lidar",
+    model_to_train.learn(
+        total_timesteps=TIMESTEPS, reset_num_timesteps=False,
     )
-    model.save(f"{models_dir}/{TIMESTEPS*iters}")
+    model_to_train.save(f"{models_dir}/{TIMESTEPS*iters}")
 
 
 # %% basic control
