@@ -91,11 +91,10 @@ path = "P:/Replay_buffer/Replay_buffer.pkl"
 
 
 model = SAC.load(
-    "P:/Final_benchmark/Training_V2/1004000",
+    "P:/Final_benchmark/Training_V2/1119000",
     tensorboard_log="P:/Final_benchmark/Training_V2",
 )
 obs = airsim_env.reset()
-airsim_env.render()
 while True:
     action, _states = model.predict(obs, deterministic=True)
     obs, reward, done, info = airsim_env.step(action)

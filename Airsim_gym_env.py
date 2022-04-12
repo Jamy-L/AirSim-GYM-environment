@@ -761,7 +761,6 @@ class BoxAirSimEnv_5_memory(gym.Env):
         return observation  # reward, done, info can't be included
 
     def render(self, mode="human"):
-        print("rendering")
         if not self.is_rendered:
             fig = plt.figure()
             self.ax = fig.add_subplot(projection="polar")
@@ -773,7 +772,6 @@ class BoxAirSimEnv_5_memory(gym.Env):
         self.ax.scatter(T, R)
         plt.pause(1e-6)
         plt.draw()
-        print("drawn")
 
     # =============================================================================
     #         # ________________ Image ___________________________________________________
