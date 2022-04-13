@@ -32,6 +32,7 @@ from Airsim_gym_env import (
     DiscreteAirSimEnv,
     normalize_action,
     BoxAirSimEnv_5_memory,
+    BoxAirSimEnv_MultiAgent,
 )
 from sim_to_real_library import lidar_sim_to_real
 
@@ -73,7 +74,7 @@ liste_checkpoints_coordonnes = [
 liste_spawn_point = create_spawn_points(spawn)
 
 ClockSpeed = 4
-airsim_env = BoxAirSimEnv_5_memory(
+airsim_env = BoxAirSimEnv_MultiAgent(
     client,
     dt=0.1,
     ClockSpeed=ClockSpeed,
@@ -85,21 +86,33 @@ airsim_env = BoxAirSimEnv_5_memory(
 )
 
 
-models_dir = "P:/Final_benchmark/Training_V2"
-logdir = "P:/Final_benchmark/Training_V2"
+models_dir = "P:/Final_benchmark/Training_V5"
+logdir = "P:/Final_benchmark/Training_V5"
 path = "P:/Replay_buffer/Replay_buffer.pkl"
 
+TIMESTEPS = 1000
 
-model = SAC.load(
-    "P:/Final_benchmark/Training_V2/1119000",
-    tensorboard_log="P:/Final_benchmark/Training_V2",
-)
-obs = airsim_env.reset()
+
+model = SAC("MultiInputPolicy", airsim_env, verbose=1, tensorboard_log=logdir)
+
+iters = 0
 while True:
-    action, _states = model.predict(obs, deterministic=True)
-    obs, reward, done, info = airsim_env.step(action)
-    if done:
-        obs = airsim_env.reset()
+    iters = iters + 1
+    model.learn(
+        total_timesteps=TIMESTEPS, reset_num_timesteps=False, tb_log_name="YOLOOOO",
+    )
+    model.save(f"{models_dir}/{TIMESTEPS*iters}")
+
+# model = SAC.load(
+#     "Training/Lidar_only",
+#     tensorboard_log="P:/Final_benchmark/Training_V2",
+# )
+# obs = airsim_env.reset()
+# while True:
+#     action, _states = model.predict(obs, deterministic=True)
+#     obs, reward, done, info = airsim_env.step(action)
+#     if done:
+#         obs = airsim_env.reset()
 
 #%%
 TIMESTEPS = 1000
