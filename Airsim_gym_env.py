@@ -23,7 +23,7 @@ import cv2
 import random
 from stable_baselines3 import SAC
 
-ENNEMI_MODEL = SAC.load("P:/Final_benchmark/Training_V2/1119000")
+ENNEMI_MODEL = SAC.load("Training/Lidar_only")
 
 
 def proximity_jammer(lidar):
@@ -356,7 +356,7 @@ class BoxAirSimEnv(gym.Env):
         # ____________ Image ___________________
         responses = self.client.simGetImages(
             [airsim.ImageRequest("Camera1", airsim.ImageType.Scene, False, False)],
-            "MyVehicle",
+            "A_MyVehicle",
         )  # scene vision image in uncompressed RGB array
         response = responses[0]
 
@@ -454,13 +454,14 @@ class BoxAirSimEnv_5_memory(gym.Env):
 
         self.client = client
         self.multi_agent_control = {}
-        self.multi_agent_control["MyVehicle"] = airsim.CarControls()
-        for i in range(1, 5):
+        self.multi_agent_control["A_MyVehicle"] = airsim.CarControls()
+        self.ennemi_number = 4
+        for i in range(1, self.ennemi_number + 1):
             self.multi_agent_control["Car{}".format(i)] = airsim.CarControls()
             self.multi_agent_control["Car{}".format(i)].throttle = 0
             self.multi_agent_control["Car{}".format(i)].steering = 0
 
-        self.car_state = client.getCarState("MyVehicle")
+        self.car_state = client.getCarState("A_MyVehicle")
         # car_state is an AirSim object that contains informations that are not
         # obtainable in real experiments. Therefore, it cannot be used as a
         # MDP object. However, it is useful for computing the reward
@@ -570,11 +571,11 @@ class BoxAirSimEnv_5_memory(gym.Env):
         # The actions are extracted from the "action" argument
 
         denormalized_action = denormalize_action(action)
-        self.multi_agent_control["MyVehicle"].throttle = float(denormalized_action[0])
-        self.multi_agent_control["MyVehicle"].steering = float(denormalized_action[1])
+        self.multi_agent_control["A_MyVehicle"].throttle = float(denormalized_action[0])
+        self.multi_agent_control["A_MyVehicle"].steering = float(denormalized_action[1])
 
         if self.reversed_world:
-            self.multi_agent_control["MyVehicle"].steering *= -1
+            self.multi_agent_control["A_MyVehicle"].steering *= -1
 
         for i in range(1, 5):
             self.decision_maker(i)
@@ -587,7 +588,7 @@ class BoxAirSimEnv_5_memory(gym.Env):
         self.client.simPause(True)
 
         # Get the state from AirSim
-        self.car_state = self.client.getCarState("MyVehicle")
+        self.car_state = self.client.getCarState("A_MyVehicle")
         for i in range(5):
             self.observation_maker(i)
 
@@ -598,7 +599,7 @@ class BoxAirSimEnv_5_memory(gym.Env):
 
         # ___________ Updates the reward ____________________
         # collision info is necessary to compute reward
-        collision_info = self.client.simGetCollisionInfo("MyVehicle")
+        collision_info = self.client.simGetCollisionInfo("A_MyVehicle")
         crash = collision_info.has_collided
 
         reward = 0
@@ -623,14 +624,107 @@ class BoxAirSimEnv_5_memory(gym.Env):
         if self.is_rendered:
             self.render()
 
-        return self.multi_agent_obs["MyVehicle"], reward, self.done, info
+        return self.multi_agent_obs["A_MyVehicle"], reward, self.done, info
 
-    def decision_maker(self, i):
+    def reset(self):
+
+        print("reset")
+        self.client.reset()
+
+        # be careful, the call arguments for quaterninons are x,y,z,w
+
+        # _______ main car respawn ______________________________
+
+        Circuit_wrapper1 = Circuit_wrapper(
+            self.liste_spawn_point,
+            self.liste_checkpoints_coordonnes,
+            UE_spawn_point=self.UE_spawn_point,
+        )
+        spawn_point, theta, self.Circuit1 = Circuit_wrapper1.sample_random_spawn_point()
+
+        x_val, y_val, z_val = spawn_point.x, spawn_point.y, spawn_point.z
+
+        pose = airsim.Pose()
+
+        orientation = airsim.Quaternionr(0, 0, np.sin(theta / 2) * 1, np.cos(theta / 2))
+        position = airsim.Vector3r(x_val, y_val, z_val)
+        pose.position = position
+        pose.orientation = orientation
+        self.client.simSetVehiclePose(
+            pose, ignore_collision=True, vehicle_name="A_MyVehicle"
+        )
+
+        # _____________Ennemi car respawn _________________
+
+        for i in range(1, 5):
+            x_val, y_val, z_val = self.ennemi_respawn[i]["coordinates"]
+            theta = self.ennemi_respawn[i]["angle"] * np.pi / 180
+
+            pose = airsim.Pose()
+
+            orientation = airsim.Quaternionr(
+                0, 0, np.sin(theta / 2) * 1, np.cos(theta / 2)
+            )
+            position = airsim.Vector3r(x_val, y_val, z_val)
+            pose.position = position
+            pose.orientation = orientation
+            self.client.simSetVehiclePose(
+                pose, ignore_collision=True, vehicle_name="Car{}".format(i)
+            )
+
+        ##########
+
+        self.done = False
+
+        self.total_reward = 0
+        # let's skip the first frames to inialise lidar and make sure everything is right
+        self.client.simContinueForFrames(100)
+        # the lidar data can take a bit of time before initialisation.
+        time.sleep(1)
+
+        if self.random_reverse:
+            self.reversed_world = random.choice([False, True])
+
+        for i in range(5):
+            self.observation_maker(i, init=True)
+
+        return self.multi_agent_obs[
+            "A_MyVehicle"
+        ]  # reward, done, info can't be included
+
+    def decision_maker(self, i, throttle_penalty=0.6):
+        """ Chose an action for actor i
+
+        Compute the self.multi_agent_control therm related to the i agent, with
+        a penalty applied on throttle ( we want the learning agent to faster
+        than the ennemis to encounter entersetign beahviour)
+
+        Parameters
+        ----------
+        i : int
+            agent ID
+        throttle_penalty : float, optional
+            Coeffficient to be applied to ennemi throttle. The default is 0.6.
+
+        Returns
+        -------
+        None.
+
+        """
+        if not (1 <= i <= self.ennemi_number):
+            raise ValueError(
+                """The ennemi ID is not matching with the
+                             number of ennemis ( received i={},
+                            expecting {} ennemis""".format(
+                    i, self.ennemi_number
+                )
+            )
+
         denormalized_action = denormalize_action(
             ENNEMI_MODEL.predict(observation=self.multi_agent_obs["Car{}".format(i)])[0]
         )
-        self.multi_agent_control["Car{}".format(i)].throttle = float(
-            denormalized_action[0]
+        self.multi_agent_control["Car{}".format(i)].throttle = (
+            float(denormalized_action[0]) * throttle_penalty
         )
         self.multi_agent_control["Car{}".format(i)].steering = float(
             denormalized_action[1]
@@ -640,12 +734,37 @@ class BoxAirSimEnv_5_memory(gym.Env):
             self.multi_agent_control["Car{}".format(i)].steering *= -1
 
     def action_pusher(self):
+        """ Push the CarControl to AirSim for every agent
+
+        Returns
+        -------
+        None.
+
+        """
         for agent_name in self.multi_agent_obs.keys():
             self.client.setCarControls(self.multi_agent_control[agent_name], agent_name)
 
     def observation_maker(self, i, init=False):
+        """ Fetch observation for the agent i
+        
+        Contains all sort of operation on lidar data. Proximity jammer, uniform
+        sampling, and a killswitch if no lidar point is detected.
+        Parameters
+        ----------
+        i : int
+            Agent ID where the observation has to be fetched
+        init : Boolean, optional
+            Whether or not this observation is called by reset() or step().
+            Basically, whether or not the lidar memory is empty.
+            The default is False.
+
+        Returns
+        -------
+        None.
+
+        """
         if i == 0:
-            name = "MyVehicle"
+            name = "A_MyVehicle"
         else:
             name = "Car{}".format(i)
 
@@ -657,7 +776,7 @@ class BoxAirSimEnv_5_memory(gym.Env):
         )  # removing closest points
         current_lidar, lidar_error = lidar_formater(current_raw_lidar, self.lidar_size)
 
-        if init:
+        if init:  # Initialising memory
             prev_lidar1 = np.copy(current_lidar)
             prev_lidar2 = np.copy(current_lidar)
             prev_lidar3 = np.copy(current_lidar)
@@ -692,9 +811,6 @@ class BoxAirSimEnv_5_memory(gym.Env):
             # Alas, Done cannot be returned by init, but step() will take care of ending the sim
             self.done = True
 
-        if self.random_reverse:
-            self.reversed_world = random.choice([False, True])
-
         if self.reversed_world:
             current_lidar[:, 0] *= -1
             current_lidar = current_lidar[::-1]
@@ -721,69 +837,7 @@ class BoxAirSimEnv_5_memory(gym.Env):
         }
         self.multi_agent_obs[name] = observation
 
-    def reset(self):
-
-        print("reset")
-        self.client.reset()
-
-        # be careful, the call arguments for quaterninons are x,y,z,w
-
-        # _______ main car respawn ______________________________
-
-        Circuit_wrapper1 = Circuit_wrapper(
-            self.liste_spawn_point,
-            self.liste_checkpoints_coordonnes,
-            UE_spawn_point=self.UE_spawn_point,
-        )
-        spawn_point, theta, self.Circuit1 = Circuit_wrapper1.sample_random_spawn_point()
-
-        x_val, y_val, z_val = spawn_point.x, spawn_point.y, spawn_point.z
-
-        pose = airsim.Pose()
-
-        orientation = airsim.Quaternionr(0, 0, np.sin(theta / 2) * 1, np.cos(theta / 2))
-        position = airsim.Vector3r(x_val, y_val, z_val)
-        pose.position = position
-        pose.orientation = orientation
-        self.client.simSetVehiclePose(
-            pose, ignore_collision=True, vehicle_name="MyVehicle"
-        )
-
-        # _____________Ennemi car respawn _________________
-
-        for i in range(1, 5):
-            x_val, y_val, z_val = self.ennemi_respawn[i]["coordinates"]
-            theta = self.ennemi_respawn[i]["angle"] * np.pi / 180
-
-            pose = airsim.Pose()
-
-            orientation = airsim.Quaternionr(
-                0, 0, np.sin(theta / 2) * 1, np.cos(theta / 2)
-            )
-            position = airsim.Vector3r(x_val, y_val, z_val)
-            pose.position = position
-            pose.orientation = orientation
-            self.client.simSetVehiclePose(
-                pose, ignore_collision=True, vehicle_name="Car{}".format(i)
-            )
-
-        ##########
-
-        self.done = False
-
-        self.total_reward = 0
-        # let's skip the first frames to inialise lidar and make sure everything is right
-        self.client.simContinueForFrames(100)
-        # the lidar data can take a bit of time before initialisation.
-        time.sleep(1)
-
-        for i in range(5):
-            self.observation_maker(i, init=True)
-
-        return self.multi_agent_obs["MyVehicle"]  # reward, done, info can't be included
-
     def render(self, mode="human"):
-        print("rendering")
         if not self.is_rendered:
             fig = plt.figure()
             self.ax = fig.add_subplot(projection="polar")
@@ -795,13 +849,12 @@ class BoxAirSimEnv_5_memory(gym.Env):
         self.ax.scatter(T, R)
         plt.pause(1e-6)
         plt.draw()
-        print("drawn")
 
     # =============================================================================
     #         # ________________ Image ___________________________________________________
     #         responses = self.client.simGetImages(
     #             [airsim.ImageRequest("Camera1", airsim.ImageType.Scene, False, False)],
-    #             "MyVehicle",
+    #             "A_MyVehicle",
     #         )  # scene vision image in uncompressed RGB array
     #         response = responses[0]
     #
@@ -1164,7 +1217,7 @@ class MultiDiscreteAirSimEnv(gym.Env):
         # ______________ Image _______________________
         responses = self.client.simGetImages(
             [airsim.ImageRequest("Camera1", airsim.ImageType.Scene, False, False)],
-            "MyVehicle",
+            "A_MyVehicle",
         )  # scene vision image in uncompressed RGB array
         response = responses[0]
 
@@ -1513,7 +1566,7 @@ class DiscreteAirSimEnv(gym.Env):
         # ___________ Image _________________________________
         responses = self.client.simGetImages(
             [airsim.ImageRequest("Camera1", airsim.ImageType.Scene, False, False)],
-            "MyVehicle",
+            "A_MyVehicle",
         )  # scene vision image in uncompressed RGB array
         response = responses[0]
 

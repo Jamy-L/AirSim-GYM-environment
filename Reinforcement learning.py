@@ -46,7 +46,7 @@ client = airsim.CarClient()
 client.confirmConnection()
 client.simPause(True)
 
-client.enableApiControl(True, "MyVehicle")
+client.enableApiControl(True, "A_MyVehicle")
 client.enableApiControl(True, "Car1")
 client.enableApiControl(True, "Car2")
 client.enableApiControl(True, "Car3")
@@ -78,7 +78,7 @@ liste_checkpoints_coordonnes = [
 
 liste_spawn_point = create_spawn_points(spawn)
 
-ClockSpeed = 4
+ClockSpeed = 1
 airsim_env = BoxAirSimEnv_5_memory(
     client,
     dt=0.1,
@@ -99,24 +99,16 @@ path = "P:/Replay_buffer/Replay_buffer.pkl"
 TIMESTEPS = 1000
 
 
-model_to_train = SAC.load(
-    "P:/Final_benchmark/Training_V2/1119000", airsim_env, tensorboard_log=logdir
-)
+model_to_train = SAC.load("Training/Lidar_only", airsim_env, tensorboard_log=logdir,)
 
-# iters = 0
-# while True:
-#     iters = iters + 1
-#     model_to_train.learn(
-#         total_timesteps=TIMESTEPS, reset_num_timesteps=False,
-#     )
-#     model_to_train.save(f"{models_dir}/{TIMESTEPS*iters}")
-
-obs = airsim_env.reset()
+iters = 0
 while True:
-    action, _states = model_to_train.predict(obs, deterministic=True)
-    obs, reward, done, info = airsim_env.step(action)
-    if done:
-        pass  # obs = airsim_env.reset()
+    iters = iters + 1
+    model_to_train.learn(
+        total_timesteps=TIMESTEPS, reset_num_timesteps=False, tb_log_name="SAC_Multi",
+    )
+    model_to_train.save(f"{models_dir}/{TIMESTEPS*iters}")
+
 
 # %% basic control
 
