@@ -86,8 +86,8 @@ airsim_env = BoxAirSimEnv_MultiAgent(
 )
 
 
-models_dir = "P:/Final_benchmark/Training_V5"
-logdir = "P:/Final_benchmark/Training_V5"
+models_dir = "P:/Final_benchmark/Training_V4"
+logdir = "P:/Final_benchmark/Training_V4"
 path = "P:/Replay_buffer/Replay_buffer.pkl"
 
 TIMESTEPS = 1000
@@ -99,7 +99,7 @@ iters = 0
 while True:
     iters = iters + 1
     model.learn(
-        total_timesteps=TIMESTEPS, reset_num_timesteps=False, tb_log_name="YOLOOOO",
+        total_timesteps=TIMESTEPS, reset_num_timesteps=False, tb_log_name="Multi_agent",
     )
     model.save(f"{models_dir}/{TIMESTEPS*iters}")
 

@@ -46,6 +46,8 @@ def proximity_jammer(lidar):
 
 
 class BaseAirSimEnv(gym.Env):
+    """ Base AirSim environment containing all general methods"""
+
     def __init__(
         self,
         client,
@@ -87,8 +89,17 @@ class BaseAirSimEnv(gym.Env):
         self.Circuit1 = None
         self.ax = None
         self.reward = None
+        self.gate_passed = None
 
     def init_values(self):
+        """ Init to be done during reset()
+        
+
+        Returns
+        -------
+        None.
+
+        """
 
         self.done = False
 
@@ -104,17 +115,45 @@ class BaseAirSimEnv(gym.Env):
         print("reset")
 
     def airsim_step(self):
+        """ Make a simulation step
+        
+
+        Returns
+        -------
+        None.
+
+        """
         self.client.simPause(False)
         # TODO a dedicated thread may be more efficient
         time.sleep(self.dt / self.ClockSpeed)
         self.client.simPause(True)
 
     def checkpoint_update(self):
+        """ Update the checkpoint status.
+
+        Returns
+        -------
+        None.
+
+        """
         self.car_state = self.client.getCarState()
         position = self.car_state.kinematics_estimated.position
         self.gate_passed = self.Circuit1.cycle_tick(position.x_val, position.y_val)[0]
 
     def random_respawn(self, vehicle_name=None):
+        """ Sample a random respwan point
+
+        Parameters
+        ----------
+        vehicle_name : Str, optional
+            Name of the main agent when there are multiple agents.
+            The default is None.
+
+        Returns
+        -------
+        None.
+
+        """
         # be careful, the call arguments for quaterninons are x,y,z,w
         Circuit_wrapper1 = Circuit_wrapper(
             self.liste_spawn_point,
@@ -139,6 +178,13 @@ class BaseAirSimEnv(gym.Env):
             self.client.simSetVehiclePose(pose, ignore_collision=True)
 
     def reward_calculation(self):
+        """ Computes the reward.
+
+        Returns
+        -------
+        None.
+
+        """
         collision_info = self.client.simGetCollisionInfo()
         crash = collision_info.has_collided
 
@@ -889,7 +935,7 @@ class BoxAirSimEnv_MultiAgent(BaseAirSimEnv):
         None.
 
         """
-        if not (1 <= i <= self.ennemi_number):
+        if not 1 <= i <= self.ennemi_number:
             raise ValueError(
                 """The ennemi ID is not matching with the
                              number of ennemis ( received i={},
@@ -924,7 +970,7 @@ class BoxAirSimEnv_MultiAgent(BaseAirSimEnv):
 
     def observation_maker(self, i, init=False):
         """ Fetch observation for the agent i
-        
+
         Contains all sort of operation on lidar data. Proximity jammer, uniform
         sampling, and a killswitch if no lidar point is detected.
         Parameters
