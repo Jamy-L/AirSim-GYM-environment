@@ -20,13 +20,29 @@ from jamys_toolkit import lidar_formater, denormalize_action
 TIME = time.time()
 DECISION_PERIOD = 0.1  # seconds
 OBSERVATION_PERIOD = 0.1
+LAST_RUNNING_TIME = None # To check if the car is stuck
+CRASH_TIMER = 5  # seconds
 MODEL = SAC.load("/home/pi/Documents/vroom/Lidar_only")
 
+THROTTLE_SCALE_FORWARD = 50
+THROTTLE_SCALE_REVERSE = 10
+
+STEERING_SCALE = 40
+RECEIVED_MOTOR_SPEED = None
+
 # ________ States ______________
-STATE = None
 STOP = 0
 DRIVING = 1
 EVASIVE_MANEUVER = 2
+INIT_EVASIVE_MANEUVER = 3
+
+STATE = DRIVING
+
+EVASIVE_MANEUVER_INIT_TIME = None # To control the init duration
+NEUTRAL_DELAY = 0.5 # in seconds. How long is the transition ?
+
+EVASIVE_MANEUVER_DURATION = 2 # in seconds. How long is the maneuver ?                                                                                                               
+EVASIVE_MANEUVER_START_TIME = None # to control the maneuver time
 # ________ LIDAR DEFINITION _________________
 PORT_NAME = "/dev/ttyUSB0"
 
@@ -35,18 +51,14 @@ LIDAR = RPLidar(PORT_NAME)
 
 def start_lidar():
     try:
-        return LIDAR.get_info()
+        info = start_lidar()
+        print(info, type(info))
     except:
         start_lidar()
 
 
-info = start_lidar()
-
-print(info, type(info))
-
 health = LIDAR.get_health()
 print(health)
-
 
 ITERATOR = LIDAR.iter_scans()  # Getting scan (type = generator)
 OBSERVATION = None
@@ -62,6 +74,21 @@ SPI.max_speed_hz = 1000000
 SPI.mode = 0
 
 # __________ Control functions _________________
+def is_car_stuck(received_motor_speed):
+    if STATE == STOP:
+        return False
+    global LAST_RUNNING_TIME
+    if RECEIVED_MOTOR_SPEED is None:
+        print("I have no speed measure bro WTF ??")
+        return False
+    if received_motor_speed > 0 or LAST_RUNNING_TIME is None: #  running or init
+        LAST_RUNNING_TIME = time.time()
+        return False
+    if time.time() - LAST_RUNNING_TIME >= CRASH_TIMER:
+        LAST_RUNNING_TIME = None
+        return True
+    return False
+
 def sat(x, xmin, xmax):
     """ saturation function
 
@@ -86,67 +113,116 @@ def sat(x, xmin, xmax):
         return xmin
     return x
 
+def init_evasive_maneuver():
+    global EVASIVE_MANEUVER_INIT_TIME
+    if EVASIVE_MANEUVER_INIT_TIME is None: # first time in the function
+        EVASIVE_MANEUVER_INIT_TIME = time.time()
+        
+    if time.time() - EVASIVE_MANEUVER_INIT_TIME > NEUTRAL_DELAY:
+        # exiting init state
+        global STATE
+        STATE = EVASIVE_MANEUVER
+        EVASIVE_MANEUVER_INIT_TIME = None
+    
+    command = {'neutral':True}
+    return command
+
 
 def evasive_maneuver(obs):
-    global STATE
-    action = None
-
-    drive_condition = False
-    if drive_condition:
+    global EVASIVE_MANEUVER_START_TIME
+    if EVASIVE_MANEUVER_START_TIME is None: # first time in the function
+        EVASIVE_MANEUVER_START_TIME = time.time()
+    
+    if time.time()-EVASIVE_MANEUVER_START_TIME > EVASIVE_MANEUVER_DURATION:
+        global STATE
         STATE = DRIVING
-    return action
-
-
-def car_ctrl(steering, motor_speed):
-
-    # Commands limits
-    motor_speed = sat(motor_speed, xmin=0, xmax=10)
-
-    steering = sat(steering, xmin=-15, xmax=15)
-
-    # Sending commands
-    to_send = [motor_speed, steering + 135]
-    reply = SPI.xfer2(to_send)
-
+        EVASIVE_MANEUVER_START_TIME = None
+    
+    
+    command = {'throttle':1,
+               'steering':0,
+               'reverse':True,
+               'neutral':False} # TODO
+    
+    return command
 
 def decision_making(obs):
+    print("\nstate : ", STATE)
     if STATE == DRIVING:
         action = denormalize_action(MODEL.predict(obs, deterministic=True)[0])
+        command={'throttle':action[0], 'steering':action[1], 'reverse':False, 'neutral':False}
 
     elif STATE == STOP:
-        action = np.array([0, 0])  # 0 speed, 0 steering
+        command = {'throttle':0, 'steering':0, 'reverse':False, 'neutral':False}  # 0 speed, 0 steering
 
     elif STATE == EVASIVE_MANEUVER:
-        action = evasive_maneuver(obs)
+        print("evasive maneuver like a boss")
+        command = evasive_maneuver(obs)
+        
+    elif STATE == INIT_EVASIVE_MANEUVER:
+        print("init maneuver")
+        command = init_evasive_maneuver()
+        
     else:
         raise ValueError(
-            """ STATE took unexpected value. Expected {}, {}
+            """ STATE took unexpected value. Expected {}, {},{}
                          or {}, but received {}""".format(
-                DRIVING, STOP, EVASIVE_MANEUVER, STATE
+                DRIVING, STOP, EVASIVE_MANEUVER, INIT_EVASIVE_MANEUVER, STATE
             )
         )
-    return action
+    return command
 
-
-def push_action(action):
+def scale_command(command):
     """
-    action[0] : 'throttle' -> [-1, 1]
-    action[1] : steering -> [-0.5, 0.5]
-
+    mapping of:
+        throttle forward: [0, 1] -> [0, THROTTLE_SCALE_FORWARD]
+        throttle backward: [0, 1] -> [0, THROTTLE_SCALE_REVERSE]
+        steering : [-0.5, 0.5] -> [-STEERING_SCALE, STEERING_SCALE]
     """
-    print(action)
-    throttle = 10 * abs(action[0])
-    steering = 30 * action[1]
 
-    car_ctrl(steering, throttle)
+    if command['reverse']:
+        scaled_command={'throttle':THROTTLE_SCALE_REVERSE * abs(command['throttle']),
+                        'steering':STEERING_SCALE * command['steering'],
+                        'reverse' :command['reverse'],
+                        'neutral' :command['neutral']}
+    else:
+        scaled_command={'throttle':THROTTLE_SCALE_FORWARD * abs(command['throttle']),
+                'steering':STEERING_SCALE * command['steering'],
+                'reverse' :command['reverse'],
+                'neutral' :command['neutral']}
+    
+    return scaled_command
+
+def send_SPI(scaled_command):
+    if scaled_command['neutral']:
+        to_send = [115, 0 + 140]
+    else:
+        # Commands limits
+        motor_speed = int(sat(scaled_command['throttle'], xmin=0, xmax=100))
+
+        steering = int(sat(scaled_command['steering'], xmin=-15, xmax=15))
+
+        # Sending commands
+        if scaled_command['reverse']:
+            to_send = [motor_speed//2, steering + 140] # TODO
+        else:
+            to_send = [motor_speed//2 + 10, steering + 140] #TODO
+            
+    reply = SPI.xfer2(to_send)
+    speed = reply[0]
+    global RECEIVED_MOTOR_SPEED
+    RECEIVED_MOTOR_SPEED = speed # the reply is the measured motor speed
+    
+def push_action(command):
+    print(command)
+    if command['neutral']:
+        send_SPI(command)
+    else:
+        scaled_command = scale_command(command)
+        send_SPI(scaled_command)
 
 
 def fetch_observation():
-    global STATE
-    stuck_condition = False
-    if stuck_condition:
-        STATE = EVASIVE_MANEUVER
-
     scan = next(ITERATOR)
     dots = np.array([(meas[1], meas[2]) for meas in scan])  # Convert data into np.array
 
@@ -184,11 +260,17 @@ def fetch_observation():
             "prev_steering": np.array([0]),
         }
 
+    global STATE
+    stuck_condition = is_car_stuck(RECEIVED_MOTOR_SPEED)
+    if stuck_condition and STATE != EVASIVE_MANEUVER and STATE != INIT_EVASIVE_MANEUVER:
+        print("Help im stuck : state ",STATE)
+        STATE = INIT_EVASIVE_MANEUVER
+
+
     return OBSERVATION
 
 
 # ____________ MultiThreading stuff ____________________________
-
 
 def decision_making_thread(obs_q):
     """ Choose an action based on observations
@@ -214,10 +296,10 @@ def decision_making_thread(obs_q):
 
     # deciding
     # print("Deciding", obs)
-    action = decision_making(obs)
+    command = decision_making(obs)
 
-    # pushign action
-    push_action(action)
+    # pushing action
+    push_action(command)
 
 
 def fetch_observation_thread(obs_q):
