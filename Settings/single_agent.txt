@@ -1,0 +1,94 @@
+{
+  "SeeDocsAt": "https://github.com/Microsoft/AirSim/blob/master/docs/settings.md",
+  "SettingsVersion": 1.2,
+  "SimMode": "Car",
+  "ClockSpeed" : 4,
+
+  "PawnPaths": {
+    "CustomPawn": {"PawnBP": "Class'/AirSim/VehicleAdv/Vehicle/VehicleAdvPawn.VehicleAdvPawn_C'"}
+    },
+
+  "Vehicles": {
+        "MyVehicle": {
+          "VehicleType": "PhysXCar",
+          "PawnPath": "CustomPawn",
+          "Sensors":{
+              "Lidar1": {
+                "SensorType": 6,
+                "Enabled" : true,
+
+                "NumberOfChannels": 1,
+                "DrawDebugPoints": false,
+                "PointsPerSecond": 8000,
+                "RotationsPerSecond":10,
+
+                "VerticalFOVUpper": 0,
+                "VerticalFOVLower": -0,
+                "HorizontalFOVStart": -180,
+                "HorizontalFOVEnd": 180,
+
+
+                "X" : 0,"Y": 0,"Z" : -1,
+                "DataFrame": "SensorLocalFrame"
+                        }
+                      },
+                "Cameras": {
+                  "Camera1": {
+                    "CaptureSettings": [
+                      {
+                        "ImageType": 0,
+                        "Width": 60,
+                        "Height": 60,
+                        "FOV_Degrees": 90,
+                        "AutoExposureSpeed": 100,
+                        "AutoExposureBias": 0,
+                        "AutoExposureMaxBrightness": 0.64,
+                        "AutoExposureMinBrightness": 0.03,
+                        "MotionBlurAmount": 0,
+                        "TargetGamma": 1.0,
+                        "ProjectionMode": "",
+                        "OrthoWidth": 5.12
+                      }
+                    ],
+                    "NoiseSettings": [
+                      {
+                        "Enabled": false,
+                        "ImageType": 0,
+
+                        "RandContrib": 0.2,
+                        "RandSpeed": 100000.0,
+                        "RandSize": 500.0,
+                        "RandDensity": 2,
+
+                        "HorzWaveContrib":0.03,
+                        "HorzWaveStrength": 0.08,
+                        "HorzWaveVertSize": 1.0,
+                        "HorzWaveScreenSize": 1.0,
+
+                        "HorzNoiseLinesContrib": 1.0,
+                        "HorzNoiseLinesDensityY": 0.01,
+                        "HorzNoiseLinesDensityXY": 0.5,
+
+                        "HorzDistortionContrib": 1.0,
+                        "HorzDistortionStrength": 0.02
+                      }
+                    ],
+                    "Gimbal": {
+                      "Stabilization": 0,
+                      "Pitch": 0, "Roll": 0, "Yaw": 0
+                    },
+                        "X": 1, "Y": 0, "Z": -1.2,
+                        "Pitch": 0, "Roll": 0, "Yaw": 0,
+                        "UnrealEngine": {
+                        "PixelFormatOverride": [
+                          {
+                            "ImageType": 0,
+                            "PixelFormat": 0
+                          }
+                          ]
+                          }
+                  }
+                }
+}
+}
+}

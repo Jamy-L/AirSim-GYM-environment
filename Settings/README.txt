@@ -1,0 +1,1 @@
+put settings.JSON in the Airsim/ file (in c/users/../documents )

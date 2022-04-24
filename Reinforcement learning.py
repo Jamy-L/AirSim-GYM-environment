@@ -19,7 +19,7 @@ import random
 
 import sys
 
-sys.path.append("C:/Users/jamyl/Documents/GitHub/AirSim-GYM-environment")
+sys.path.append("Training/Lidar_only")
 from jamys_toolkit import (
     fetch_action,
     pre_train,
@@ -74,7 +74,7 @@ liste_checkpoints_coordonnes = [
 liste_spawn_point = create_spawn_points(spawn)
 
 ClockSpeed = 4
-airsim_env = BoxAirSimEnv_MultiAgent(
+airsim_env = BoxAirSimEnv_5_memory(
     client,
     dt=0.1,
     ClockSpeed=ClockSpeed,
@@ -86,13 +86,24 @@ airsim_env = BoxAirSimEnv_MultiAgent(
 )
 
 
-models_dir = "P:/Final_benchmark/Training_V4"
-logdir = "P:/Final_benchmark/Training_V4"
-path = "P:/Replay_buffer/Replay_buffer.pkl"
+models_dir = ""
+logdir = ""
+path = ""
 
 TIMESTEPS = 1000
 
 
+model = SAC.load(
+    "C:/Users/jamyl/Desktop/Lidar_only.zip", tensorboard_log="P:/Training_V1"
+)
+obs = airsim_env.reset()
+while True:
+    action, _states = model.predict(obs, deterministic=True)
+    obs, reward, done, info = airsim_env.step(action)
+    if done:
+        obs = airsim_env.reset()
+
+#%% training a model
 model = SAC("MultiInputPolicy", airsim_env, verbose=1, tensorboard_log=logdir)
 
 iters = 0
@@ -103,76 +114,8 @@ while True:
     )
     model.save(f"{models_dir}/{TIMESTEPS*iters}")
 
-# model = SAC.load(
-#     "Training/Lidar_only",
-#     tensorboard_log="P:/Final_benchmark/Training_V2",
-# )
-# obs = airsim_env.reset()
-# while True:
-#     action, _states = model.predict(obs, deterministic=True)
-#     obs, reward, done, info = airsim_env.step(action)
-#     if done:
-#         obs = airsim_env.reset()
 
-#%%
-TIMESTEPS = 1000
-
-
-model = SAC("MultiInputPolicy", airsim_env, verbose=1, tensorboard_log=logdir)
-
-iters = 0
-while True:
-    iters = iters + 1
-    model.learn(
-        total_timesteps=TIMESTEPS,
-        reset_num_timesteps=False,
-        tb_log_name="SAC_memory_5_jammed_lidar",
-    )
-    model.save(f"{models_dir}/{TIMESTEPS*iters}")
-
-
-# %% basic control
-
-
-def find_radius(angle, lidar):
-    boolean1 = lidar[:, 0] >= angle
-    boolean2 = np.roll(boolean1, 1)
-    boolean3 = np.logical_xor(boolean1, boolean2)
-    try:
-        index = np.where(boolean3[1:] == True)[0][0]
-        return lidar[index + 1, 1]
-    except:
-        return None
-
-
-obs = airsim_env.reset()
-
-
-prev_steering = 0
-steering = 0
-while True:
-    right_distance = find_radius(np.pi / 2, obs["current_lidar"])
-    left_distance = find_radius(-np.pi / 2, obs["current_lidar"])
-    throttle = 0.5
-    if right_distance is not None and left_distance is not None:
-        prev_steering = steering
-        steering = (right_distance - left_distance) / 20
-    else:
-        steering = prev_steering
-
-    if steering >= 0:
-        steering = 0.25
-    else:
-        steering = -0.25
-
-    action = np.array([throttle, steering])
-    obs, reward, done, info = airsim_env.step(action)
-
-    if done:
-        airsim_env.reset()
-
-
-# %% Trainign a model
+# %% Trainign a model with custom extractor
 models_dir = "P:/Training/Training_V4"
 logdir = "P:/Training/Training_V4"
 
@@ -194,7 +137,6 @@ model = SAC(
     policy_kwargs=policy_kwargs,
 )
 
-# model.pre_train(replay_buffer_path = path)
 
 iters = 0
 while True:
@@ -228,27 +170,6 @@ TIMESTEPS = 100
 model = SAC("MultiInputPolicy", airsim_env, verbose=1, tensorboard_log=logdir)
 
 model.pre_train(replay_buffer_path=path)
-
-
-# %% Loading the replay buffer and training on that
-models_dir = "C:/Users/jamyl/Desktop/TER_dossier/Training"
-logdir = "C:/Users/jamyl/Desktop/TER_dossier/Training"
-
-TIMESTEPS = 100
-model = SAC("MultiInputPolicy", airsim_env, verbose=1, tensorboard_log=logdir)
-model.load_replay_buffer(path)
-model.replay_buffer.device = "cuda"  # TODO is it really working ??
-buffer = model.replay_buffer
-
-iters = 0
-while True:
-    iters = iters + 1
-    model.learn(
-        total_timesteps=TIMESTEPS,
-        reset_num_timesteps=False,
-        tb_log_name="SAC_Lidar_only_RC",
-    )
-    model.save(f"{models_dir}/{TIMESTEPS*iters}")
 
 
 # %% gathering teacher data to save in a replay buffer
@@ -341,28 +262,6 @@ while True:
 
 print("saving...")
 save_to_pkl(path, replay_buffer)
-
-
-# %% Playing on the circuit
-airsim_env.reset()
-airsim_env.close()
-
-while True:
-    airsim_env.client.car_state = airsim_env.client.getCarState()
-    position = airsim_env.client.car_state.kinematics_estimated.position
-    gate, finish = airsim_env.Circuit1.cycle_tick(position.x_val, position.y_val)
-    collision_info = client.simGetCollisionInfo()
-    crash = collision_info.has_collided
-    if crash:
-        print("crash")
-        airsim_env.reset()
-        airsim_env.close()
-
-    if gate:
-        print("gate_passed")
-    if finish:
-        print("finish")
-        break
 
 
 # %% Load a previously trained model
